@@ -13,6 +13,7 @@ class Material;
  * 2. The surface normal at that point (normal) for lighting calc.
  * 3. The distance along the ray (t).
  * 4. Whether the hit was on the front or back face.
+ * 5. The material of the hit point
  */
 struct HitRecord {
     Point3 p;                     // The intersection point in 3D space
@@ -25,6 +26,9 @@ struct HitRecord {
      * @brief Determines the face normal direction.
      * Ensure the normal always points against the ray.
      * If ray and normal face the same way, the ray is inside the object.
+     * 
+     * @param r The ray who hits the object
+     * @param outward_normal The surface normal at the hitting point who points outside the object
      */
     inline void set_face_normal(const Ray& r, const Vec3& outward_normal) {
         front_face = dot(r.direction(), outward_normal) < 0;

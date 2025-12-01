@@ -104,26 +104,3 @@ inline Vec3 unit_vector(Vec3 v) {
     return v / v.length();
 }
 
-/**
- * @brief Calculates the reflection vector for an incoming ray.
- * @param v The incoming direction vector.
- * @param n The surface normal vector (must be a unit vector).
- * @return The reflected direction vector.
- */
-inline Vec3 reflect(const Vec3& v, const Vec3& n) {
-    return v - 2*dot(v,n)*n;
-}
-
-/**
- * @brief Calculates the refraction vector using Snell's Law.
- * @param uv The incoming unit direction vector.
- * @param n The surface normal unit vector.
- * @param etai_over_etat The ratio of refractive indices (eta_incident / eta_refracted).
- * @return The refracted direction vector.
- */
-inline Vec3 refract(const Vec3& uv, const Vec3& n, double etai_over_etat) {
-    auto cos_theta = fmin(dot(-uv, n), 1.0);
-    Vec3 r_out_perp =  etai_over_etat * (uv + cos_theta*n);
-    Vec3 r_out_parallel = -sqrt(fabs(1.0 - r_out_perp.length_squared())) * n;
-    return r_out_perp + r_out_parallel;
-}

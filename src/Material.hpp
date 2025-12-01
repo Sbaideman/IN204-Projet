@@ -18,15 +18,29 @@ public:
     virtual ~Material() = default;
 
     /**
+     * @brief Computes the amount of light emitted by the material at a specific point.
+     * 
+     * By default, materials are non-emissive and return black (0,0,0). 
+     * This function is overridden by light source materials (e.g., PointLight) 
+     * to return their intrinsic color/intensity.
+     * 
+     * @param p The geometric point on the surface where the emission is calculated.
+     * @return The color (radiance) of the light emitted.
+     */
+    virtual Color emit(const Point3& p) const {
+        return Color(0,0,0);
+    }
+
+    /**
      * @brief Computes the scattered ray after a hit.
      * @param r_in The incoming ray.
      * @param rec The HitRecord of the intersection.
-     * @param attenuation The color attenuation of the material.
-     * @param scattered The resulting scattered ray.
+     * @param attenuate_color The color attenuation of the material.
+     * @param r_out The resulting scattered ray.
      * @return true if the ray was scattered; false if it was absorbed.
      */
     virtual bool scatter(
-        const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
+        const Ray& r_in, const HitRecord& rec, Color& attenuate_color, Ray& r_out
     ) const = 0;
 };
 
@@ -45,8 +59,8 @@ public:
     Matte(const Color& a) : albedo(a) {}
 
     virtual bool scatter(
-        const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
-    ) const override {
+        const Ray& r_in, const HitRecord& rec, Color& attenuate_color, Ray& r_out
+    ) const {
         // Calculate a random scatter direction
         auto scatter_direction = rec.normal + random_unit_vector();
 
@@ -55,8 +69,8 @@ public:
         if (scatter_direction.length_squared() < 1e-8)
             scatter_direction = rec.normal;
             
-        scattered = Ray(rec.p, scatter_direction);
-        attenuation = albedo; // The ray's color is attenuated by the material's albedo
+        r_out = Ray(rec.p, scatter_direction);
+        attenuate_color = albedo; // The ray's color is attenuated by the material's albedo
         return true; // A diffuse material always scatters
     }
 
@@ -82,26 +96,25 @@ private:
  */
 class Metal : public Material {
 public:
-    Color albedo;
-    double fuzz;
+    Color albedo;  // The base color of the material
+    double fuzz;   // fuzz effect (0~1)
 
     Metal(const Color& a, double f) : albedo(a), fuzz(f < 1 ? f : 1) {}
 
     virtual bool scatter(
-        const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
-    ) const override {
+        const Ray& r_in, const HitRecord& rec, Color& attenuate_color, Ray& r_out
+    ) const {
         // 1. 计算完美的反射向量
         Vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
         
         // 2. 添加模糊效果
-        // random_in_unit_sphere() 是我们在 Matte 中用过的辅助函数
-        scattered = Ray(rec.p, reflected + fuzz * random_in_unit_sphere());
+        r_out = Ray(rec.p, reflected + fuzz * random_in_unit_sphere());
         
-        attenuation = albedo;
+        attenuate_color = albedo;
         
         // 3. 检查反射光线是否有效
         // 如果模糊处理后的光线射入了物体内部，则吸收该光线
-        return (dot(scattered.direction(), rec.normal) > 0);
+        return (dot(r_out.direction(), rec.normal) > 0);
     }
 
 private:
@@ -127,19 +140,19 @@ private:
  */
 class Glass : public Material {
 public:
-    double ir; // Index of Refraction (折射率)
+    double ir; // Index of refraction of glass 
 
     Glass(double index_of_refraction) : ir(index_of_refraction) {}
 
     virtual bool scatter(
-        const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
-    ) const override {
-        attenuation = Color(1.0, 1.0, 1.0); // 玻璃不吸收颜色
+        const Ray& r_in, const HitRecord& rec, Color& attenuate_color, Ray& r_out
+    ) const {
+        attenuate_color = Color(1.0, 1.0, 1.0); // Glass does not absorb color
         double refraction_ratio = rec.front_face ? (1.0/ir) : ir;
 
         Vec3 unit_direction = unit_vector(r_in.direction());
         
-        // 检查全内反射 (Total Internal Reflection)
+        // Verify the total internal reflection
         double cos_theta = fmin(dot(-unit_direction, rec.normal), 1.0);
         double sin_theta = sqrt(1.0 - cos_theta*cos_theta);
 
@@ -148,14 +161,14 @@ public:
 
         // Schlick 近似计算反射概率
         if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_double()) {
-            // 必须反射
+            // 光线全反射
             direction = reflect(unit_direction, rec.normal);
         } else {
-            // 可以折射
+            // 光线全折射
             direction = refract(unit_direction, rec.normal, refraction_ratio);
         }
 
-        scattered = Ray(rec.p, direction);
+        r_out = Ray(rec.p, direction);
         return true;
     }
 
@@ -165,5 +178,33 @@ private:
         auto r0 = (1-ref_idx) / (1+ref_idx);
         r0 = r0*r0;
         return r0 + (1-r0)*pow((1 - cosine),5);
+    }
+};
+
+
+/**
+ * @class PointLight
+ * @brief A material that emits light.
+ * 
+ * Unlike other materials, it does NOT scatter rays (it absorbs them or passes them through).
+ * Instead, it adds light energy to the ray path.
+ */
+class PointLight : public Material {
+public:
+    Color emit_color;
+
+    PointLight(Color c) : emit_color(c) {}
+
+    // 1. 散射：光源通常不反射光线（简单起见），或者说它覆盖了反射。
+    // 返回 false 表示光线到了这里就结束了，不再继续反弹ov。
+    virtual bool scatter(
+        const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
+    ) const {
+        return false;
+    }
+
+    // 2. 发光：返回光源的颜色
+    virtual Color emit(const Point3& p) const {
+        return emit_color;
     }
 };
