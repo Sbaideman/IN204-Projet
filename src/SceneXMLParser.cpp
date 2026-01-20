@@ -1,10 +1,31 @@
+#include <iostream>
 #include "SceneXMLParser.hpp"
 
 // 移除XML注释（<!-- ... -->）
-std::string SceneXMLParser::removeComments(const std::string& xml) {
-    // std::regex commentRegex(R"(<!--.*?-->)", std::regex::dotall); // macOS 对 dotall 支持不完善
-    std::regex commentRegex(R"((?s)<!--.*?-->)");
-    return std::regex_replace(xml, commentRegex, "");
+// std::string SceneXMLParser::removeComments(const std::string& xml) {
+//     // std::regex commentRegex(R"(<!--.*?-->)", std::regex::dotall); // macOS 对 dotall 支持不完善
+//     // std::regex commentRegex(R"((?s)<!--.*?-->)");
+//     return std::regex_replace(xml, commentRegex, "");
+// }
+std::string SceneXMLParser::removeComments(const std::string& xml) { // 折中方案
+    std::string cleanXml = xml;
+    size_t commentStart = cleanXml.find("<!--");
+    
+    while (commentStart != std::string::npos) {
+        // 查找注释结束位置
+        size_t commentEnd = cleanXml.find("-->", commentStart);
+        if (commentEnd == std::string::npos) {
+            // 无结束标签，截断到注释开始位置（防御性处理）
+            cleanXml.erase(commentStart);
+            break;
+        }
+        // 移除整个注释块（包括 <!-- 和 -->）
+        cleanXml.erase(commentStart, commentEnd - commentStart + 3);
+        // 继续查找下一个注释
+        commentStart = cleanXml.find("<!--", commentStart);
+    }
+    
+    return cleanXml;
 }
 
 // 解析属性字符串为键值对
@@ -22,6 +43,15 @@ AttrMap SceneXMLParser::parseAttributes(const std::string& attrStr) {
         std::string value = (*it)[2].str();
         attrs[key] = value;
     }
+
+    // std::cout << "[parseAttributes] 原始属性字符串：" << attrStr << std::endl;
+    // std::cout << "[parseAttributes] 解析结果（键=值）：" << std::endl;
+    // for (const auto& pair : attrs) {
+    //     std::cout << "  - " << pair.first << " = " << pair.second << std::endl;
+    // }
+    // std::cout << "----------------------------------------" << std::endl;
+    // // =====================================================
+
     return attrs;
 }
 
@@ -103,8 +133,15 @@ SceneData SceneXMLParser::parseString(const std::string& xmlContent) {
 
     for (; it != end; ++it) {
         std::string part = (*it).str();
-        // 去除空白字符
-        part.erase(std::remove_if(part.begin(), part.end(), ::isspace), part.end());
+        // 只删首尾空白，保留中间空格（标签名和属性的分隔）
+        // 第一步：删除开头空白
+        part.erase(part.begin(), std::find_if(part.begin(), part.end(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }));
+        // 第二步：删除结尾空白
+        part.erase(std::find_if(part.rbegin(), part.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }).base(), part.end());
         if (part.empty()) continue;
 
         // 处理开始标签（<tag...>）
