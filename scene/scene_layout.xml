@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 场景布局配置文件 -->
+<scene>
+    <!-- 场景全局设置 -->
+    <global_settings>
+        <background_color r="255" g="255" b="255"/>
+        <scene_size width="1920" height="1080"/>
+    </global_settings>
+
+    <!-- 场景内物体列表 -->
+    <objects>
+        <object id="cube_01" type="cube">
+            <position x="100" y="200" z="0"/>
+            <size width="50" height="50" depth="50"/>
+            <color r="255" g="0" b="0"/>
+        </object>
+
+        <object id="sphere_01" type="sphere">
+            <position x="300" y="200" z="0"/>
+            <radius value="30"/>
+            <color r="0" g="255" b="0"/>
+        </object>
+    </objects>
+
+    <!-- 相机配置 -->
+    <camera id="main_camera" type="perspective">
+        <position x="0" y="0" z="100"/>
+        <look_at x="200" y="200" z="0"/>
+        <fov value="60"/>
+    </camera>
+</scene>

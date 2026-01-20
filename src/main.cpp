@@ -1,7 +1,8 @@
 #include <iostream>
 #include <fstream>
-#include "src/Object.hpp"
-#include "src/Scene.hpp"
+#include "Object.hpp"
+#include "Scene.hpp"
+#include "SceneXMLParser.hpp"
 
 /**
  * @brief 计算一条特定光线最终看到的颜色
