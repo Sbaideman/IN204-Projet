@@ -56,11 +56,24 @@ void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
             float pos_z = std::stof(xml_obj.properties.at("position").at("z"));
             float radius = std::stof(xml_obj.properties.at("radius").at("value"));
 
-            // 创建材质（示例：漫反射材质，从 XML 属性获取颜色）
-            float mat_r = std::stof(xml_obj.properties.at("color").at("r")) / 255.0f;
-            float mat_g = std::stof(xml_obj.properties.at("color").at("g")) / 255.0f;
-            float mat_b = std::stof(xml_obj.properties.at("color").at("b")) / 255.0f;
-            auto mat = std::make_shared<Matte>(Color(mat_r, mat_g, mat_b));
+            // 新增：根据解析的材质创建对应材质对象
+            std::shared_ptr<Material> mat;
+            const auto& mat_data = xml_obj.material;
+            if (mat_data.type == "matte") {
+                float r = std::stof(mat_data.properties.at("color").at("r")) / 255.0f;
+                float g = std::stof(mat_data.properties.at("color").at("g")) / 255.0f;
+                float b = std::stof(mat_data.properties.at("color").at("b")) / 255.0f;
+                mat = std::make_shared<Matte>(Color(r, g, b));
+            } else if (mat_data.type == "metal") {
+                float r = std::stof(mat_data.properties.at("color").at("r")) / 255.0f;
+                float g = std::stof(mat_data.properties.at("color").at("g")) / 255.0f;
+                float b = std::stof(mat_data.properties.at("color").at("b")) / 255.0f;
+                float fuzz = std::stof(mat_data.properties.at("fuzz").at("value"));
+                mat = std::make_shared<Metal>(Color(r, g, b), fuzz);
+            } else if (mat_data.type == "glass") {
+                float ior = std::stof(mat_data.properties.at("ior").at("value"));
+                mat = std::make_shared<Glass>(ior);
+            }
 
             // 创建球体对象，添加到渲染场景
             auto sphere = std::make_shared<Sphere>(Point3(pos_x, pos_y, pos_z), radius, mat);

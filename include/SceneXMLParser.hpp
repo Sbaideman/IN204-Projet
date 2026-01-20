@@ -12,11 +12,18 @@
 // 通用属性映射（key-value）
 using AttrMap = std::unordered_map<std::string, std::string>;
 
+// 材质结构体
+struct MaterialObject {
+    std::string type;          // 材质类型：matte/metal/glass
+    std::unordered_map<std::string, AttrMap> properties; // 材质属性（color/ior/fuzz等）
+};
+
 // 场景物体结构体
 struct SceneObject {
     std::string id;
     std::string type;
     std::unordered_map<std::string, AttrMap> properties; // position/size/color等子属性
+    MaterialObject material;
 };
 
 // 相机结构体
@@ -64,6 +71,7 @@ private:
     SceneObject m_currentObject;    // 临时存储当前解析的物体
     Camera m_currentCamera;         // 临时存储当前解析的相机
     GlobalSettings m_currentGlobal; // 临时存储当前解析的全局设置
+    MaterialObject m_currentMaterial;      // 新增：临时存储当前解析的材质
 };
 
 #endif // SCENE_XML_PARSER_H

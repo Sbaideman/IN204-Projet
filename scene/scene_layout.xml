@@ -18,7 +18,26 @@
         <object id="sphere_01" type="sphere">
             <position x="0" y="0" z="-1"/>
             <radius value="0.5"/>
-            <color r="70" g="25" b="60"/>
+            <material type="matte">
+                <color r="70" g="25" b="60"/>
+            </material>
+        </object>
+
+        <object id="sphere_01" type="sphere">
+            <position x="1" y="0" z="-1"/>
+            <radius value="0.5"/>
+            <material type="metal">
+                <color r="179" g="157" b="129"/>
+                <fuzz value="0.1"/> <!-- 金属模糊度 -->
+            </material>
+        </object>
+
+        <object id="sphere_glass" type="sphere">
+            <position x="-1" y="0" z="-1"/>
+            <radius value="0.5"/>
+            <material type="glass">
+                <ior value="1.5"/> <!-- 折射率 -->
+            </material>
         </object>
     </objects>
 

@@ -2,11 +2,6 @@
 #include "SceneXMLParser.hpp"
 
 // 移除XML注释（<!-- ... -->）
-// std::string SceneXMLParser::removeComments(const std::string& xml) {
-//     // std::regex commentRegex(R"(<!--.*?-->)", std::regex::dotall); // macOS 对 dotall 支持不完善
-//     // std::regex commentRegex(R"((?s)<!--.*?-->)");
-//     return std::regex_replace(xml, commentRegex, "");
-// }
 std::string SceneXMLParser::removeComments(const std::string& xml) { // 折中方案
     std::string cleanXml = xml;
     size_t commentStart = cleanXml.find("<!--");
@@ -44,14 +39,6 @@ AttrMap SceneXMLParser::parseAttributes(const std::string& attrStr) {
         attrs[key] = value;
     }
 
-    // std::cout << "[parseAttributes] 原始属性字符串：" << attrStr << std::endl;
-    // std::cout << "[parseAttributes] 解析结果（键=值）：" << std::endl;
-    // for (const auto& pair : attrs) {
-    //     std::cout << "  - " << pair.first << " = " << pair.second << std::endl;
-    // }
-    // std::cout << "----------------------------------------" << std::endl;
-    // // =====================================================
-
     return attrs;
 }
 
@@ -77,6 +64,9 @@ void SceneXMLParser::processStartTag(const std::string& tagContent) {
         m_currentCamera = Camera();
         m_currentCamera.id = attrs.count("id") ? attrs["id"] : "";
         m_currentCamera.type = attrs.count("type") ? attrs["type"] : "";
+    } else if (tagName == "material") { // 新增：处理material开始标签
+        m_currentMaterial = MaterialObject();
+        m_currentMaterial.type = attrs.count("type") ? attrs["type"] : "";
     }
 }
 
@@ -90,6 +80,9 @@ void SceneXMLParser::processEndTag(const std::string& tagName) {
     } else if (tagName == "camera") {
         m_sceneData.camera = m_currentCamera;
         m_currentCamera = Camera(); // 重置
+    } else if (tagName == "material") { // 新增：结束material标签时，关联到当前物体
+        m_currentObject.material = m_currentMaterial;
+        m_currentMaterial = MaterialObject(); // 重置临时材质
     }
     m_currentParentTag = ""; // 清空当前父标签
 }
@@ -105,7 +98,10 @@ void SceneXMLParser::processSelfClosingTag(const std::string& tagContent) {
     AttrMap attrs = parseAttributes(attrStr);
 
     // 根据当前父标签存储子属性
-    if (m_currentParentTag == "global_settings") {
+    // 新增：如果当前父标签是material，存储材质子属性
+    if (m_currentParentTag == "material") {
+        m_currentMaterial.properties[subTagName] = attrs;
+    } else if (m_currentParentTag == "global_settings") {
         m_currentGlobal.properties[subTagName] = attrs;
     } else if (m_currentParentTag == "object") {
         m_currentObject.properties[subTagName] = attrs;
