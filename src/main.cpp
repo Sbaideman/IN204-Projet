@@ -1,6 +1,10 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <thread>
+#include <atomic>
+#include <vector>
+#include <mutex>
 #include "Object.hpp"
 #include "Scene.hpp"
 #include "SceneXMLParser.hpp"
@@ -52,6 +56,48 @@ Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
 
     // 3. 最终颜色 = 自发光 + (衰减 * 反射光带来的颜色)
     return emitted + attenuation * ray_color(scattered, world, depth-1);
+}
+
+// 2. 全局/局部变量（替换原有的 row_indices 和 progress_mutex）
+std::atomic<int> completed_lines(0); // 原子变量统计完成行数，无需互斥锁
+std::vector<std::array<int, 3>> pixel_buffer;     // 像素缓冲区（存储所有像素颜色）
+
+// 3. 线程函数：处理指定范围的行（核心，可直接复用）
+void render_lines(
+    int start_j, int end_j,
+    const Scene& render_scene,
+    const Point3& origin, const Vec3& horizontal, const Vec3& vertical,
+    const Point3& lower_left_corner,
+    int image_width, int image_height,
+    int samples_per_pixel, int max_depth,
+    std::vector<std::array<int, 3>>& pixel_buffer
+) {
+    for (int j = start_j; j >= end_j; --j) {
+        // 逐像素渲染（原逻辑完全不变）
+        for (int i = 0; i < image_width; ++i) {
+            Color pixel_color(0,0,0);
+            for (int s = 0; s < samples_per_pixel; ++s) {
+                auto u = (i + random_double()) / (image_width-1);
+                auto v = (j + random_double()) / (image_height-1);
+                Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
+                pixel_color += ray_color(r, render_scene, max_depth);
+            }
+            // 颜色归一化 + 写入缓冲区
+            auto scale = 1.0 / samples_per_pixel;
+            auto r = sqrt(pixel_color.x() * scale);
+            auto g = sqrt(pixel_color.y() * scale);
+            auto b = sqrt(pixel_color.z() * scale);
+            int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
+            int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
+            int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
+            size_t idx = (image_height - 1 - j) * image_width + i;
+            pixel_buffer[idx] = {ir, ig, ib};
+        }
+        // 原子变量自增，线程安全更新进度
+        completed_lines.fetch_add(1, std::memory_order_relaxed);
+        std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
+                  << "/" << image_height << ' ' << std::flush;
+    }
 }
 
 void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
@@ -197,41 +243,51 @@ int main() {
     Vec3 vertical = Vec3(0, camera_viewport_height, 0);
     Point3 lower_left_corner = origin - horizontal/2 - vertical/2 - Vec3(0, 0, camera_focal_length);
 
-    // 渲染
-    std::ofstream outfile("test.ppm");
-    outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+    // 初始化像素缓冲区
+    pixel_buffer.resize(image_width * image_height);
+    completed_lines.store(0, std::memory_order_relaxed);
 
     // ========== 记录渲染开始时间 ==========
     auto render_start = std::chrono::high_resolution_clock::now();
 
-    for (int j = image_height-1; j >= 0; --j) {
-        std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
-        for (int i = 0; i < image_width; ++i) {
-            Color pixel_color(0,0,0);
-            for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_double()) / (image_width-1);
-                auto v = (j + random_double()) / (image_height-1);
-                
-                // 简单的相机调整，让它稍微往下看一点点（非必须，为了效果）
-                // 这里不做复杂变换，直接用标准光线
-                Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
-                
-                pixel_color += ray_color(r, render_scene, max_depth);
-            }
-            
-            auto scale = 1.0 / samples_per_pixel;
-            auto r = sqrt(pixel_color.x() * scale);
-            auto g = sqrt(pixel_color.y() * scale);
-            auto b = sqrt(pixel_color.z() * scale);
+    // 获取 CPU 核心数（Apple Silicon 自动识别 M 系列核心数）
+    int num_threads = std::thread::hardware_concurrency();
+    if (num_threads == 0) num_threads = 4; // 兜底
+    std::vector<std::thread> threads;
+    std::cerr << "====================================\n";
+    std::cerr << "CPU 信息检测：\n";
+    std::cerr << "  核心数：" << num_threads << "\n";
+    std::cerr << "====================================\n\n";
 
-            int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
-            int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
-            int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
-            
-            outfile << ir << ' ' << ig << ' ' << ib << '\n';
-        }
+    // 拆分渲染任务到多个线程（按行拆分）
+    int lines_per_thread = image_height / num_threads;
+    for (int t = 0; t < num_threads; ++t) {
+        int start_j = image_height - 1 - t * lines_per_thread;
+        int end_j = (t == num_threads - 1) ? 0 : (start_j - lines_per_thread + 1);
+        // 启动线程
+        threads.emplace_back(
+            render_lines,
+            start_j, end_j,
+            std::ref(render_scene),
+            std::ref(origin), std::ref(horizontal), std::ref(vertical),
+            std::ref(lower_left_corner),
+            image_width, image_height,
+            samples_per_pixel, max_depth,
+            std::ref(pixel_buffer)
+        );
     }
-    
+
+    // 等待所有线程完成
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    // ===== （后面的文件写入、耗时统计逻辑完全不变）=====
+    std::ofstream outfile("test.ppm");
+    outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+    for (const auto& pixel : pixel_buffer) {
+        outfile << pixel[0] << ' ' << pixel[1] << ' ' << pixel[2] << '\n';
+    }
     outfile.close();
 
     // ========== 计算并输出渲染耗时 ==========
