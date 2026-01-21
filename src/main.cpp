@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <chrono>
 #include "Object.hpp"
 #include "Scene.hpp"
 #include "SceneXMLParser.hpp"
@@ -200,6 +201,9 @@ int main() {
     std::ofstream outfile("test.ppm");
     outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
+    // ========== 记录渲染开始时间 ==========
+    auto render_start = std::chrono::high_resolution_clock::now();
+
     for (int j = image_height-1; j >= 0; --j) {
         std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
         for (int i = 0; i < image_width; ++i) {
@@ -229,6 +233,14 @@ int main() {
     }
     
     outfile.close();
+
+    // ========== 计算并输出渲染耗时 ==========
+    auto render_end = std::chrono::high_resolution_clock::now();
+    // 计算毫秒级耗时（也可以用秒：std::chrono::duration<double>）
+    std::chrono::duration<double, std::milli> render_duration = render_end - render_start;
     std::cerr << "\nRendering completed\n";
+    std::cerr << "Total render time: " << render_duration.count() << " ms (" 
+              << render_duration.count() / 1000.0 << " seconds)\n";
+
     return 0;
 }
