@@ -174,10 +174,11 @@ void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
 std::atomic<int> completed_lines(0); // 原子变量统计完成行数，无需互斥锁
 std::vector<Pixel> pixel_buffer;     // 像素缓冲区（存储所有像素颜色）
 
-// 重构后的线程函数：轮询处理行（核心修改）
-void render_lines_round_robin(
-    int thread_id,                // 线程ID（0~num_threads-1）
+// 分块轮询：每个线程处理“间隔为线程数”的块，块内是连续行
+void render_blocks_round_robin(
+    int thread_id,                // 线程ID
     int num_threads,              // 总线程数
+    int block_size,               // 块大小（建议 16/32 行，适配 Apple Silicon 缓存）
     const Scene& render_scene,
     const Point3& origin, const Vec3& horizontal, const Vec3& vertical,
     const Point3& lower_left_corner,
@@ -186,33 +187,40 @@ void render_lines_round_robin(
     std::vector<Pixel>& pixel_buffer,
     std::atomic<int>& completed_lines
 ) {
-    // 轮询处理行：线程ID为thread_id的线程，处理 thread_id, thread_id+num_threads, thread_id+2*num_threads... 行
-    // 行遍历顺序仍为从 image_height-1 到 0（保持原有渲染顺序）
-    for (int j = image_height - 1 - thread_id; j >= 0; j -= num_threads) {
-        // 逐像素渲染（原有逻辑完全不变）
-        for (int i = 0; i < image_width; ++i) {
-            Color pixel_color(0,0,0);
-            for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_double()) / (image_width-1);
-                auto v = (j + random_double()) / (image_height-1);
-                Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
-                pixel_color += ray_color(r, render_scene, max_depth);
+    // 计算总块数
+    int total_blocks = (image_height + block_size - 1) / block_size;
+    
+    // 轮询处理块：线程ID处理 thread_id, thread_id+num_threads, ... 块
+    for (int block_idx = thread_id; block_idx < total_blocks; block_idx += num_threads) {
+        // 计算当前块的行范围（块内是连续行，缓存友好）
+        int block_start_j = image_height - 1 - block_idx * block_size;
+        int block_end_j = std::max(0, block_start_j - block_size + 1);
+        
+        // 处理块内的所有行（连续行，缓存命中率高）
+        for (int j = block_start_j; j >= block_end_j; --j) {
+            for (int i = 0; i < image_width; ++i) {
+                Color pixel_color(0,0,0);
+                for (int s = 0; s < samples_per_pixel; ++s) {
+                    auto u = (i + random_double()) / (image_width-1);
+                    auto v = (j + random_double()) / (image_height-1);
+                    Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
+                    pixel_color += ray_color(r, render_scene, max_depth);
+                }
+                auto scale = 1.0 / samples_per_pixel;
+                auto r = sqrt(pixel_color.x() * scale);
+                auto g = sqrt(pixel_color.y() * scale);
+                auto b = sqrt(pixel_color.z() * scale);
+                int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
+                int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
+                int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
+                size_t idx = (image_height - 1 - j) * image_width + i;
+                pixel_buffer[idx] = {ir, ig, ib};
             }
-            // 颜色归一化 + 写入缓冲区
-            auto scale = 1.0 / samples_per_pixel;
-            auto r = sqrt(pixel_color.x() * scale);
-            auto g = sqrt(pixel_color.y() * scale);
-            auto b = sqrt(pixel_color.z() * scale);
-            int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
-            int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
-            int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
-            size_t idx = (image_height - 1 - j) * image_width + i;
-            pixel_buffer[idx] = {ir, ig, ib};
+            // 原子变量更新进度
+            completed_lines.fetch_add(1, std::memory_order_relaxed);
+            std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
+                      << "/" << image_height << ' ' << std::flush;
         }
-        // 原子变量自增，更新进度
-        completed_lines.fetch_add(1, std::memory_order_relaxed);
-        std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
-                  << "/" << image_height << ' ' << std::flush;
     }
 }
 
@@ -253,6 +261,7 @@ int main() {
     // 初始化像素缓冲区
     pixel_buffer.resize(image_width * image_height);
     completed_lines.store(0, std::memory_order_relaxed);
+    int block_size = 32; // 关键：块大小（适配 Apple Silicon 缓存，建议 16/32/64）
 
     // ========== 记录渲染开始时间 ==========
     auto render_start = std::chrono::high_resolution_clock::now();
@@ -269,9 +278,10 @@ int main() {
     // 启动线程：每个线程分配唯一ID（0~num_threads-1）
     for (int t = 0; t < num_threads; ++t) {
         threads.emplace_back(
-            render_lines_round_robin,
+            render_blocks_round_robin,
             t,                          // 线程ID
             num_threads,                // 总线程数
+            block_size,
             std::ref(render_scene),
             std::ref(origin), std::ref(horizontal), std::ref(vertical),
             std::ref(lower_left_corner),
