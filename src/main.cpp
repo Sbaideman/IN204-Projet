@@ -11,6 +11,14 @@
  * @param depth Maximum number of ray bounces
  * @return The final color of the pixel
  */
+
+// 定义全局变量存储从XML解析的相机/背景色参数
+Point3 camera_origin;
+float camera_focal_length;
+float camera_viewport_height;
+float camera_aspect_ratio;
+Color bg_color(0.05, 0.05, 0.1); // 默认背景色
+
 Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
     HitRecord rec;
 
@@ -22,7 +30,7 @@ Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
     // 为了看清点光源的效果，我们将原本明亮的天空改成【全黑】或【微弱的星光】
     if (!world.hit(r, 0.001, infinity, rec)) {
         // 返回微弱的环境光 (0.05, 0.05, 0.05)
-        return Color(0.05, 0.05, 0.1);
+        return bg_color;
 
         // // 没击中，还是返回天空背景色
         // Vec3 unit_direction = unit_vector(r.direction());
@@ -46,57 +54,112 @@ Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
 }
 
 void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
-    // 1. 遍历解析出的所有物体，转换为渲染用的几何对象
+    // 1. 遍历所有物体（包括地面）
     for (const auto& xml_obj : data.objects) {
-        // 示例：假设 XML 中物体类型为 "sphere"（球体），需适配你的 XML 定义
+        std::shared_ptr<Material> mat;
+        const auto& mat_data = xml_obj.material;
+
+        // ========== 材质解析（扩展点光源材质） ==========
+        if (mat_data.type == "matte") {
+            float r = std::stof(mat_data.properties.at("color").at("r")) / 255.0f;
+            float g = std::stof(mat_data.properties.at("color").at("g")) / 255.0f;
+            float b = std::stof(mat_data.properties.at("color").at("b")) / 255.0f;
+            mat = std::make_shared<Matte>(Color(r, g, b));
+        } else if (mat_data.type == "metal") {
+            float r = std::stof(mat_data.properties.at("color").at("r")) / 255.0f;
+            float g = std::stof(mat_data.properties.at("color").at("g")) / 255.0f;
+            float b = std::stof(mat_data.properties.at("color").at("b")) / 255.0f;
+            float fuzz = std::stof(mat_data.properties.at("fuzz").at("value"));
+            mat = std::make_shared<Metal>(Color(r, g, b), fuzz);
+        } else if (mat_data.type == "glass") {
+            float ior = std::stof(mat_data.properties.at("ior").at("value"));
+            mat = std::make_shared<Glass>(ior);
+        } else if (mat_data.type == "light") {
+            // 解析自发光强度
+            float intensity = std::stof(mat_data.properties.at("intensity").at("value"));
+            mat = std::make_shared<PointLight>(Color(intensity, intensity, intensity));
+        }
+
+        // ========== 物体类型解析（扩展平面、平行六面体） ==========
         if (xml_obj.type == "sphere") {
-            // 从 XML 解析的属性中获取球体参数（position/x/y/z, radius 等）
+            // 球体解析（原有逻辑）
             float pos_x = std::stof(xml_obj.properties.at("position").at("x"));
             float pos_y = std::stof(xml_obj.properties.at("position").at("y"));
             float pos_z = std::stof(xml_obj.properties.at("position").at("z"));
             float radius = std::stof(xml_obj.properties.at("radius").at("value"));
-
-            // 新增：根据解析的材质创建对应材质对象
-            std::shared_ptr<Material> mat;
-            const auto& mat_data = xml_obj.material;
-            if (mat_data.type == "matte") {
-                float r = std::stof(mat_data.properties.at("color").at("r")) / 255.0f;
-                float g = std::stof(mat_data.properties.at("color").at("g")) / 255.0f;
-                float b = std::stof(mat_data.properties.at("color").at("b")) / 255.0f;
-                mat = std::make_shared<Matte>(Color(r, g, b));
-            } else if (mat_data.type == "metal") {
-                float r = std::stof(mat_data.properties.at("color").at("r")) / 255.0f;
-                float g = std::stof(mat_data.properties.at("color").at("g")) / 255.0f;
-                float b = std::stof(mat_data.properties.at("color").at("b")) / 255.0f;
-                float fuzz = std::stof(mat_data.properties.at("fuzz").at("value"));
-                mat = std::make_shared<Metal>(Color(r, g, b), fuzz);
-            } else if (mat_data.type == "glass") {
-                float ior = std::stof(mat_data.properties.at("ior").at("value"));
-                mat = std::make_shared<Glass>(ior);
-            }
-
-            // 创建球体对象，添加到渲染场景
             auto sphere = std::make_shared<Sphere>(Point3(pos_x, pos_y, pos_z), radius, mat);
             render_scene.add(sphere);
-        }
-        // 扩展：添加其他物体类型（cube/triangle 等）的转换逻辑
-        else if (xml_obj.type == "cube") {
-            // 按需实现立方体的转换逻辑
+        } else if (xml_obj.type == "plane") {
+            // 平面解析（地面）
+            float pos_x = std::stof(xml_obj.properties.at("position").at("x"));
+            float pos_y = std::stof(xml_obj.properties.at("position").at("y"));
+            float pos_z = std::stof(xml_obj.properties.at("position").at("z"));
+            float n_x = std::stof(xml_obj.properties.at("normal").at("x"));
+            float n_y = std::stof(xml_obj.properties.at("normal").at("y"));
+            float n_z = std::stof(xml_obj.properties.at("normal").at("z"));
+            auto plane = std::make_shared<Plane>(Point3(pos_x, pos_y, pos_z), Vec3(n_x, n_y, n_z), mat);
+            render_scene.add(plane);
+        } else if (xml_obj.type == "parallelepiped") {
+            // 平行六面体解析
+            float o_x = std::stof(xml_obj.properties.at("origin").at("x"));
+            float o_y = std::stof(xml_obj.properties.at("origin").at("y"));
+            float o_z = std::stof(xml_obj.properties.at("origin").at("z"));
+            float u_x = std::stof(xml_obj.properties.at("u").at("x"));
+            float u_y = std::stof(xml_obj.properties.at("u").at("y"));
+            float u_z = std::stof(xml_obj.properties.at("u").at("z"));
+            float v_x = std::stof(xml_obj.properties.at("v").at("x"));
+            float v_y = std::stof(xml_obj.properties.at("v").at("y"));
+            float v_z = std::stof(xml_obj.properties.at("v").at("z"));
+            float w_x = std::stof(xml_obj.properties.at("w").at("x"));
+            float w_y = std::stof(xml_obj.properties.at("w").at("y"));
+            float w_z = std::stof(xml_obj.properties.at("w").at("z"));
+            
+            Point3 origin(o_x, o_y, o_z);
+            Vec3 u(u_x, u_y, u_z);
+            Vec3 v(v_x, v_y, v_z);
+            Vec3 w(w_x, w_y, w_z);
+            auto para = std::make_shared<Parallelepiped>(origin, u, v, w, mat);
+            render_scene.add(para);
         }
     }
 
-    // 2. （可选）从 XML 解析相机参数，覆盖硬编码的相机配置
-    // if (!data.camera.properties.empty()) {
-    //     // 示例：读取相机位置、焦距等
-    //     float cam_x = std::stof(data.camera.properties["position"]["x"]);
-    //     // ... 其他相机参数
-    // }
+    // 2. 解析相机参数（覆盖硬编码）
+    if (!data.camera.properties.empty()) {
+        // 示例：读取相机位置、焦距、视口高度、宽高比
+        float cam_x = std::stof(data.camera.properties.at("position").at("x"));
+        float cam_y = std::stof(data.camera.properties.at("position").at("y"));
+        float cam_z = std::stof(data.camera.properties.at("position").at("z"));
+        // 存储到全局/外部变量，供main函数的相机初始化使用
+        extern Point3 camera_origin;
+        extern float camera_focal_length;
+        extern float camera_viewport_height;
+        extern float camera_aspect_ratio;
+        
+        camera_origin = Point3(cam_x, cam_y, cam_z);
+        camera_focal_length = std::stof(data.camera.properties.at("focal_length").at("value"));
+        camera_viewport_height = std::stof(data.camera.properties.at("viewport_height").at("value"));
+        
+        // 解析宽高比（处理 16.0/9.0 这类字符串）
+        std::string ar_str = data.camera.properties.at("aspect_ratio").at("value");
+        size_t div_pos = ar_str.find('/');
+        if (div_pos != std::string::npos) {
+            float num = std::stof(ar_str.substr(0, div_pos));
+            float den = std::stof(ar_str.substr(div_pos+1));
+            camera_aspect_ratio = num / den;
+        } else {
+            camera_aspect_ratio = std::stof(ar_str);
+        }
+    }
 
-    // 3. （可选）应用全局设置（如背景色）
-    // if (!data.global_settings.properties.empty()) {
-    //     float bg_r = std::stof(data.global_settings.properties["background_color"]["r"]) / 255.0f;
-    //     // ... 替换背景色逻辑
-    // }
+    // 3. 解析全局设置（背景色）
+    if (!data.global_settings.properties.empty()) {
+        // 读取背景色并替换 ray_color 中的硬编码值
+        extern Color bg_color;
+        float bg_r = std::stof(data.global_settings.properties.at("background_color").at("r")) / 255.0f;
+        float bg_g = std::stof(data.global_settings.properties.at("background_color").at("g")) / 255.0f;
+        float bg_b = std::stof(data.global_settings.properties.at("background_color").at("b")) / 255.0f;
+        bg_color = Color(bg_r, bg_g, bg_b);
+    }
 }
 
 
@@ -115,75 +178,25 @@ int main() {
         return -1;
     }
 
-    Scene world;
+    // Scene world;
     Scene render_scene;  // 用于渲染的最终场景
     convertSceneDataToRenderScene(parsed_data, render_scene);
 
-    // 1. 图像参数（可从 parsed_data.global_settings 解析，这里先保留硬编码）
-    const auto aspect_ratio = 16.0 / 9.0;
+    // ========== 图像参数（可从XML全局设置扩展） ==========
     const int image_width = 400;
-    const int image_height = static_cast<int>(image_width / aspect_ratio);
-    // 注意：因为点光源很难打中，我们需要更多的采样数来减少噪点，或者把光源做大一点
     const int samples_per_pixel = 400;
     const int max_depth = 50;
 
-    // 3. 相机
-    auto viewport_height = 2.0;
-    auto viewport_width = aspect_ratio * viewport_height;
-    auto focal_length = 1.0;
-    Point3 origin = Point3(0, 0, 2); // 相机位置
+    // ========== 相机初始化（从XML解析的值） ==========
+    float aspect_ratio = camera_aspect_ratio; // 从XML读取
+    int image_height = static_cast<int>(image_width / aspect_ratio);
+    float viewport_width = aspect_ratio * camera_viewport_height;
+    Point3 origin = camera_origin; // 从XML读取
     Vec3 horizontal = Vec3(viewport_width, 0, 0);
-    Vec3 vertical = Vec3(0, viewport_height, 0);
-    Point3 lower_left_corner = origin - horizontal/2 - vertical/2 - Vec3(0, 0, focal_length);
+    Vec3 vertical = Vec3(0, camera_viewport_height, 0);
+    Point3 lower_left_corner = origin - horizontal/2 - vertical/2 - Vec3(0, 0, camera_focal_length);
 
-    // --- 材质 ---
-    auto mat_ground = make_shared<Matte>(Color(0.5, 0.5, 0.5)); // 灰色地面
-    auto mat_glass  = make_shared<Glass>(1.5);
-    auto mat_metal  = make_shared<Metal>(Color(0.7, 0.6, 0.5), 0.0);
-    auto mat_red    = make_shared<Matte>(Color(0.6, 0.1, 0.1));
-    auto mat_blue   = make_shared<Matte>(Color(0.1, 0.1, 0.8));
-    
-    // --- 创建光源材质 ---
-    // 颜色值大于 1.0 表示非常亮（HDR）
-    auto mat_light  = make_shared<PointLight>(Color(15, 15, 15)); 
-
-    // --- 物体 ---
-    
-    // 地面
-    world.add(make_shared<Plane>(Point3(0, -0.5, 0), Vec3(0, 1, 0), mat_ground));
-    render_scene.add(make_shared<Plane>(Point3(0, -0.5, 0), Vec3(0, 1, 0), mat_ground));
-
-    // --- 点光源 ---
-    // 在上方悬浮一个发光的小球
-    // 坐标: (0, 1.5, -1), 半径: 0.2 (像一个大灯泡)
-    render_scene.add(make_shared<Sphere>(Point3(-1.8, 2.2, 1.5), 1.6, mat_light));
-    world.add(make_shared<Sphere>(Point3(-1.8, 2.2, 1.5), 1.6, mat_light));
-
-    // 2. 玻璃球 (中间)
-    world.add(make_shared<Sphere>(Point3(0, 0, -1), 0.5, mat_glass));
-    
-    // --- 3. 红色平行六面体 (左边) ---
-    // 这是一个斜着的柱子
-    Point3 p_origin(-2.0, -0.5, -1.5);
-    Vec3 u(1.0, 0.0, 0.0);    // 宽度 (X轴)
-    Vec3 v(0.2, 1.0, 0.0);    // 高度 (注意！这里 X=0.2，说明它是向右歪的)
-    Vec3 w(0.0, 0.0, 1.0);    // 深度 (Z轴)
-    
-    world.add(make_shared<Parallelepiped>(p_origin, u, v, w, mat_red));
-
-    // --- 4. 蓝色平行六面体 (右边) ---
-    // 这是一个扭曲的扁盒子
-    Point3 p_origin2(1.0, -0.5, -1.5);
-    Vec3 u2(1.0, 0.0, -0.2);  // 稍微转向
-    Vec3 v2(0.0, 0.8, 0.0);   // 高度 0.5
-    Vec3 w2(0.0, 0.0, 1.0);
-    
-    world.add(make_shared<Parallelepiped>(p_origin2, u2, v2, w2, mat_blue));
-
-    // 5. 一个金属球悬浮在上方
-    world.add(make_shared<Sphere>(Point3(0, 1.0, -1.5), 0.4, mat_metal));
-
-    // 4. 渲染
+    // 渲染
     std::ofstream outfile("test.ppm");
     outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 

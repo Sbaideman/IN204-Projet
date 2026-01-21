@@ -11,18 +11,19 @@
 
 // 通用属性映射（key-value）
 using AttrMap = std::unordered_map<std::string, std::string>;
+using NestedAttrMap = std::unordered_map<std::string, AttrMap>;
 
 // 材质结构体
 struct MaterialObject {
     std::string type;          // 材质类型：matte/metal/glass
-    std::unordered_map<std::string, AttrMap> properties; // 材质属性（color/ior/fuzz等）
+    NestedAttrMap properties; // 材质属性（color/ior/fuzz等）
 };
 
 // 场景物体结构体
 struct SceneObject {
     std::string id;
     std::string type;
-    std::unordered_map<std::string, AttrMap> properties; // position/size/color等子属性
+    NestedAttrMap properties; // position/size/color等子属性
     MaterialObject material;
 };
 
@@ -30,12 +31,12 @@ struct SceneObject {
 struct Camera {
     std::string id;
     std::string type;
-    std::unordered_map<std::string, AttrMap> properties; // position/look_at/fov等子属性
+    NestedAttrMap properties; // position/look_at/fov等子属性
 };
 
 // 全局设置结构体
 struct GlobalSettings {
-    std::unordered_map<std::string, AttrMap> properties; // background_color/scene_size等子属性
+    NestedAttrMap properties; // background_color/scene_size等子属性
 };
 
 // 场景数据总结构体

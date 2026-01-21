@@ -3,17 +3,41 @@
 <scene>
     <!-- 场景全局设置 -->
     <global_settings>
-        <background_color r="255" g="255" b="255"/>
+        <background_color r="13" g="13" b="26"/>
         <scene_size width="1920" height="1080"/>
     </global_settings>
 
     <!-- 场景内物体列表 -->
     <objects>
-        <!-- <object id="cube_01" type="cube">
-            <position x="100" y="200" z="0"/>
-            <size width="50" height="50" depth="50"/>
-            <color r="255" g="0" b="0"/>
-        </object> -->
+        <!-- 地面（平面物体） -->
+        <object id="ground_plane" type="plane">
+            <position x="0" y="-0.5" z="0"/>
+            <normal x="0" y="1" z="0"/>
+            <material type="matte">
+                <color r="128" g="128" b="128"/> <!-- 灰色：128/255 ≈ 0.5 -->
+            </material>
+        </object>
+
+        <!-- 点光源球体 -->
+        <object id="point_light" type="sphere">
+            <position x="-1.8" y="2.2" z="1.5"/>
+            <radius value="1.6"/>
+            <material type="light">
+                <color r="255" g="255" b="255"/>
+                <intensity value="15"/> <!-- 自发光强度 -->
+            </material>
+        </object>
+
+       <!-- 蓝色平行六面体 -->
+        <object id="blue_parallelepiped" type="parallelepiped">
+            <origin x="2.0" y="-0.5" z="-1.5"/>
+            <u x="1.0" y="0.0" z="-0.2"/>
+            <v x="0.0" y="0.8" z="0.0"/>
+            <w x="0.0" y="0.0" z="1.0"/>
+            <material type="matte">
+                <color r="26" g="26" b="204"/> <!-- 0.1,0.1,0.8 对应值 -->
+            </material>
+        </object>
 
         <object id="sphere_01" type="sphere">
             <position x="0" y="0" z="-1"/>
@@ -23,7 +47,7 @@
             </material>
         </object>
 
-        <object id="sphere_01" type="sphere">
+        <object id="sphere_metal" type="sphere">
             <position x="1" y="0" z="-1"/>
             <radius value="0.5"/>
             <material type="metal">
@@ -41,10 +65,11 @@
         </object>
     </objects>
 
-    <!-- 相机配置 -->
+    <!-- 相机参数 -->
     <camera id="main_camera" type="perspective">
-        <position x="0" y="0" z="100"/>
-        <look_at x="200" y="200" z="0"/>
-        <fov value="60"/>
+        <position x="0" y="0" z="2"/>
+        <focal_length value="1.0"/>
+        <aspect_ratio value="16.0/9.0"/>
+        <viewport_height value="2.0"/>
     </camera>
 </scene>
