@@ -24,6 +24,9 @@ float camera_viewport_height;
 float camera_aspect_ratio;
 Color bg_color(0.05, 0.05, 0.1); // 默认背景色
 
+// 像素结构
+struct Pixel { int r, g, b; };
+
 Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
     HitRecord rec;
 
@@ -56,48 +59,6 @@ Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
 
     // 3. 最终颜色 = 自发光 + (衰减 * 反射光带来的颜色)
     return emitted + attenuation * ray_color(scattered, world, depth-1);
-}
-
-// 2. 全局/局部变量（替换原有的 row_indices 和 progress_mutex）
-std::atomic<int> completed_lines(0); // 原子变量统计完成行数，无需互斥锁
-std::vector<std::array<int, 3>> pixel_buffer;     // 像素缓冲区（存储所有像素颜色）
-
-// 3. 线程函数：处理指定范围的行（核心，可直接复用）
-void render_lines(
-    int start_j, int end_j,
-    const Scene& render_scene,
-    const Point3& origin, const Vec3& horizontal, const Vec3& vertical,
-    const Point3& lower_left_corner,
-    int image_width, int image_height,
-    int samples_per_pixel, int max_depth,
-    std::vector<std::array<int, 3>>& pixel_buffer
-) {
-    for (int j = start_j; j >= end_j; --j) {
-        // 逐像素渲染（原逻辑完全不变）
-        for (int i = 0; i < image_width; ++i) {
-            Color pixel_color(0,0,0);
-            for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_double()) / (image_width-1);
-                auto v = (j + random_double()) / (image_height-1);
-                Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
-                pixel_color += ray_color(r, render_scene, max_depth);
-            }
-            // 颜色归一化 + 写入缓冲区
-            auto scale = 1.0 / samples_per_pixel;
-            auto r = sqrt(pixel_color.x() * scale);
-            auto g = sqrt(pixel_color.y() * scale);
-            auto b = sqrt(pixel_color.z() * scale);
-            int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
-            int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
-            int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
-            size_t idx = (image_height - 1 - j) * image_width + i;
-            pixel_buffer[idx] = {ir, ig, ib};
-        }
-        // 原子变量自增，线程安全更新进度
-        completed_lines.fetch_add(1, std::memory_order_relaxed);
-        std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
-                  << "/" << image_height << ' ' << std::flush;
-    }
 }
 
 void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
@@ -209,6 +170,52 @@ void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
     }
 }
 
+// 2. 全局/局部变量（替换原有的 row_indices 和 progress_mutex）
+std::atomic<int> completed_lines(0); // 原子变量统计完成行数，无需互斥锁
+std::vector<Pixel> pixel_buffer;     // 像素缓冲区（存储所有像素颜色）
+
+// 重构后的线程函数：轮询处理行（核心修改）
+void render_lines_round_robin(
+    int thread_id,                // 线程ID（0~num_threads-1）
+    int num_threads,              // 总线程数
+    const Scene& render_scene,
+    const Point3& origin, const Vec3& horizontal, const Vec3& vertical,
+    const Point3& lower_left_corner,
+    int image_width, int image_height,
+    int samples_per_pixel, int max_depth,
+    std::vector<Pixel>& pixel_buffer,
+    std::atomic<int>& completed_lines
+) {
+    // 轮询处理行：线程ID为thread_id的线程，处理 thread_id, thread_id+num_threads, thread_id+2*num_threads... 行
+    // 行遍历顺序仍为从 image_height-1 到 0（保持原有渲染顺序）
+    for (int j = image_height - 1 - thread_id; j >= 0; j -= num_threads) {
+        // 逐像素渲染（原有逻辑完全不变）
+        for (int i = 0; i < image_width; ++i) {
+            Color pixel_color(0,0,0);
+            for (int s = 0; s < samples_per_pixel; ++s) {
+                auto u = (i + random_double()) / (image_width-1);
+                auto v = (j + random_double()) / (image_height-1);
+                Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
+                pixel_color += ray_color(r, render_scene, max_depth);
+            }
+            // 颜色归一化 + 写入缓冲区
+            auto scale = 1.0 / samples_per_pixel;
+            auto r = sqrt(pixel_color.x() * scale);
+            auto g = sqrt(pixel_color.y() * scale);
+            auto b = sqrt(pixel_color.z() * scale);
+            int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
+            int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
+            int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
+            size_t idx = (image_height - 1 - j) * image_width + i;
+            pixel_buffer[idx] = {ir, ig, ib};
+        }
+        // 原子变量自增，更新进度
+        completed_lines.fetch_add(1, std::memory_order_relaxed);
+        std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
+                  << "/" << image_height << ' ' << std::flush;
+    }
+}
+
 
 int main() {
     SceneXMLParser parser;  // 实例化解析器（正确类名）
@@ -259,21 +266,19 @@ int main() {
     std::cerr << "  核心数：" << num_threads << "\n";
     std::cerr << "====================================\n\n";
 
-    // 拆分渲染任务到多个线程（按行拆分）
-    int lines_per_thread = image_height / num_threads;
+    // 启动线程：每个线程分配唯一ID（0~num_threads-1）
     for (int t = 0; t < num_threads; ++t) {
-        int start_j = image_height - 1 - t * lines_per_thread;
-        int end_j = (t == num_threads - 1) ? 0 : (start_j - lines_per_thread + 1);
-        // 启动线程
         threads.emplace_back(
-            render_lines,
-            start_j, end_j,
+            render_lines_round_robin,
+            t,                          // 线程ID
+            num_threads,                // 总线程数
             std::ref(render_scene),
             std::ref(origin), std::ref(horizontal), std::ref(vertical),
             std::ref(lower_left_corner),
             image_width, image_height,
             samples_per_pixel, max_depth,
-            std::ref(pixel_buffer)
+            std::ref(pixel_buffer),
+            std::ref(completed_lines)
         );
     }
 
@@ -286,7 +291,7 @@ int main() {
     std::ofstream outfile("test.ppm");
     outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
     for (const auto& pixel : pixel_buffer) {
-        outfile << pixel[0] << ' ' << pixel[1] << ' ' << pixel[2] << '\n';
+        outfile << pixel.r << ' ' << pixel.g << ' ' << pixel.b << '\n';
     }
     outfile.close();
 
