@@ -185,7 +185,7 @@ void render_blocks_round_robin(
     int image_width, int image_height,
     int samples_per_pixel, int max_depth,
     std::vector<Pixel>& pixel_buffer,
-    std::atomic<int>& completed_lines
+    std::atomic<int>& completed_lines // 原子级变量
 ) {
     // 计算总块数
     int total_blocks = (image_height + block_size - 1) / block_size;
@@ -214,7 +214,7 @@ void render_blocks_round_robin(
                 int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
                 int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
                 size_t idx = (image_height - 1 - j) * image_width + i;
-                pixel_buffer[idx] = {ir, ig, ib};
+                pixel_buffer[idx] = {ir, ig, ib}; // 无需互斥锁，因为写入范围完全不重叠
             }
             // 原子变量更新进度
             completed_lines.fetch_add(1, std::memory_order_relaxed);
@@ -277,6 +277,7 @@ int main() {
 
     // 启动线程：每个线程分配唯一ID（0~num_threads-1）
     for (int t = 0; t < num_threads; ++t) {
+        // emplace_back 直接在容器的内存空间里构造 thread 对象，省去了 “创建临时对象→移动 / 拷贝” 的步骤。它会将传入的参数完美转发给元素类型（这里是 std::thread）的构造函数
         threads.emplace_back(
             render_blocks_round_robin,
             t,                          // 线程ID
@@ -292,10 +293,19 @@ int main() {
         );
     }
 
-    // 等待所有线程完成
+    // 阻塞主线程，等待所有子线程完成
     for (auto& t : threads) {
         t.join();
     }
+
+    // ========== 计算并输出渲染耗时 ==========
+    auto render_end = std::chrono::high_resolution_clock::now();
+
+    // 计算毫秒级耗时（也可以用秒：std::chrono::duration<double>）
+    std::chrono::duration<double, std::milli> render_duration = render_end - render_start;
+    std::cerr << "\nRendering completed\n";
+    std::cerr << "Total render time: " << render_duration.count() << " ms (" 
+              << render_duration.count() / 1000.0 << " seconds)\n";
 
     // ===== （后面的文件写入、耗时统计逻辑完全不变）=====
     std::ofstream outfile("test.ppm");
@@ -304,14 +314,6 @@ int main() {
         outfile << pixel.r << ' ' << pixel.g << ' ' << pixel.b << '\n';
     }
     outfile.close();
-
-    // ========== 计算并输出渲染耗时 ==========
-    auto render_end = std::chrono::high_resolution_clock::now();
-    // 计算毫秒级耗时（也可以用秒：std::chrono::duration<double>）
-    std::chrono::duration<double, std::milli> render_duration = render_end - render_start;
-    std::cerr << "\nRendering completed\n";
-    std::cerr << "Total render time: " << render_duration.count() << " ms (" 
-              << render_duration.count() / 1000.0 << " seconds)\n";
 
     return 0;
 }
