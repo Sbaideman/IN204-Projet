@@ -1,5 +1,10 @@
 #include <iostream>
 #include <fstream>
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include <vector>
+#include <mutex>
 #include "Object.hpp"
 #include "Scene.hpp"
 #include "SceneXMLParser.hpp"
@@ -18,6 +23,9 @@ float camera_focal_length;
 float camera_viewport_height;
 float camera_aspect_ratio;
 Color bg_color(0.05, 0.05, 0.1); // 默认背景色
+
+// 像素结构
+struct Pixel { int r, g, b; };
 
 Color ray_color(const Ray& r, const SceneBaseObject& world, int depth) {
     HitRecord rec;
@@ -162,6 +170,60 @@ void convertSceneDataToRenderScene(const SceneData& data, Scene& render_scene) {
     }
 }
 
+// 2. 全局/局部变量（替换原有的 row_indices 和 progress_mutex）
+std::atomic<int> completed_lines(0); // 原子变量统计完成行数，无需互斥锁
+std::vector<Pixel> pixel_buffer;     // 像素缓冲区（存储所有像素颜色）
+
+// 分块轮询：每个线程处理“间隔为线程数”的块，块内是连续行
+void render_blocks_round_robin(
+    int thread_id,                // 线程ID
+    int num_threads,              // 总线程数
+    int block_size,               // 块大小（建议 16/32 行，适配 Apple Silicon 缓存）
+    const Scene& render_scene,
+    const Point3& origin, const Vec3& horizontal, const Vec3& vertical,
+    const Point3& lower_left_corner,
+    int image_width, int image_height,
+    int samples_per_pixel, int max_depth,
+    std::vector<Pixel>& pixel_buffer,
+    std::atomic<int>& completed_lines // 原子级变量
+) {
+    // 计算总块数
+    int total_blocks = (image_height + block_size - 1) / block_size;
+    
+    // 轮询处理块：线程ID处理 thread_id, thread_id+num_threads, ... 块
+    for (int block_idx = thread_id; block_idx < total_blocks; block_idx += num_threads) {
+        // 计算当前块的行范围（块内是连续行，缓存友好）
+        int block_start_j = image_height - 1 - block_idx * block_size;
+        int block_end_j = std::max(0, block_start_j - block_size + 1);
+        
+        // 处理块内的所有行（连续行，缓存命中率高）
+        for (int j = block_start_j; j >= block_end_j; --j) {
+            for (int i = 0; i < image_width; ++i) {
+                Color pixel_color(0,0,0);
+                for (int s = 0; s < samples_per_pixel; ++s) {
+                    auto u = (i + random_double()) / (image_width-1);
+                    auto v = (j + random_double()) / (image_height-1);
+                    Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
+                    pixel_color += ray_color(r, render_scene, max_depth);
+                }
+                auto scale = 1.0 / samples_per_pixel;
+                auto r = sqrt(pixel_color.x() * scale);
+                auto g = sqrt(pixel_color.y() * scale);
+                auto b = sqrt(pixel_color.z() * scale);
+                int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
+                int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
+                int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
+                size_t idx = (image_height - 1 - j) * image_width + i;
+                pixel_buffer[idx] = {ir, ig, ib}; // 无需互斥锁，因为写入范围完全不重叠
+            }
+            // 原子变量更新进度
+            completed_lines.fetch_add(1, std::memory_order_relaxed);
+            std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
+                      << "/" << image_height << ' ' << std::flush;
+        }
+    }
+}
+
 
 int main() {
     SceneXMLParser parser;  // 实例化解析器（正确类名）
@@ -196,39 +258,62 @@ int main() {
     Vec3 vertical = Vec3(0, camera_viewport_height, 0);
     Point3 lower_left_corner = origin - horizontal/2 - vertical/2 - Vec3(0, 0, camera_focal_length);
 
-    // 渲染
+    // 初始化像素缓冲区
+    pixel_buffer.resize(image_width * image_height);
+    completed_lines.store(0, std::memory_order_relaxed);
+    int block_size = 32; // 关键：块大小（适配 Apple Silicon 缓存，建议 16/32/64）
+
+    // ========== 记录渲染开始时间 ==========
+    auto render_start = std::chrono::high_resolution_clock::now();
+
+    // 获取 CPU 核心数（Apple Silicon 自动识别 M 系列核心数）
+    int num_threads = std::thread::hardware_concurrency();
+    if (num_threads == 0) num_threads = 4; // 兜底
+    std::vector<std::thread> threads;
+    std::cerr << "====================================\n";
+    std::cerr << "CPU 信息检测：\n";
+    std::cerr << "  核心数：" << num_threads << "\n";
+    std::cerr << "====================================\n\n";
+
+    // 启动线程：每个线程分配唯一ID（0~num_threads-1）
+    for (int t = 0; t < num_threads; ++t) {
+        // emplace_back 直接在容器的内存空间里构造 thread 对象，省去了 “创建临时对象→移动 / 拷贝” 的步骤。它会将传入的参数完美转发给元素类型（这里是 std::thread）的构造函数
+        threads.emplace_back(
+            render_blocks_round_robin,
+            t,                          // 线程ID
+            num_threads,                // 总线程数
+            block_size,
+            std::ref(render_scene),
+            std::ref(origin), std::ref(horizontal), std::ref(vertical),
+            std::ref(lower_left_corner),
+            image_width, image_height,
+            samples_per_pixel, max_depth,
+            std::ref(pixel_buffer),
+            std::ref(completed_lines)
+        );
+    }
+
+    // 阻塞主线程，等待所有子线程完成
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    // ========== 计算并输出渲染耗时 ==========
+    auto render_end = std::chrono::high_resolution_clock::now();
+
+    // 计算毫秒级耗时（也可以用秒：std::chrono::duration<double>）
+    std::chrono::duration<double, std::milli> render_duration = render_end - render_start;
+    std::cerr << "\nRendering completed\n";
+    std::cerr << "Total render time: " << render_duration.count() << " ms (" 
+              << render_duration.count() / 1000.0 << " seconds)\n";
+
+    // ===== （后面的文件写入、耗时统计逻辑完全不变）=====
     std::ofstream outfile("test.ppm");
     outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
-
-    for (int j = image_height-1; j >= 0; --j) {
-        std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
-        for (int i = 0; i < image_width; ++i) {
-            Color pixel_color(0,0,0);
-            for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_double()) / (image_width-1);
-                auto v = (j + random_double()) / (image_height-1);
-                
-                // 简单的相机调整，让它稍微往下看一点点（非必须，为了效果）
-                // 这里不做复杂变换，直接用标准光线
-                Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
-                
-                pixel_color += ray_color(r, render_scene, max_depth);
-            }
-            
-            auto scale = 1.0 / samples_per_pixel;
-            auto r = sqrt(pixel_color.x() * scale);
-            auto g = sqrt(pixel_color.y() * scale);
-            auto b = sqrt(pixel_color.z() * scale);
-
-            int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
-            int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
-            int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
-            
-            outfile << ir << ' ' << ig << ' ' << ib << '\n';
-        }
+    for (const auto& pixel : pixel_buffer) {
+        outfile << pixel.r << ' ' << pixel.g << ' ' << pixel.b << '\n';
     }
-    
     outfile.close();
-    std::cerr << "\nRendering completed\n";
+
     return 0;
 }
