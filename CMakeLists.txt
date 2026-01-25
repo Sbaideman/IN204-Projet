@@ -15,10 +15,25 @@ if(NOT PNG_FOUND)
     message(FATAL_ERROR "libpng 未找到！请先安装：brew install libpng (macOS) 或 sudo apt install libpng-dev (Linux)")
 endif()
 
+# 步骤1：调用 fltk-config 获取真实版本号
+execute_process(COMMAND ${FLTK_CONFIG} --version OUTPUT_VARIABLE FLTK_REAL_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${FLTK_CONFIG} --includedir OUTPUT_VARIABLE FLTK_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${FLTK_CONFIG} --cxxflags OUTPUT_VARIABLE FLTK_CXXFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+# 启用FLTK图片/本地文件选择器组件（必须加，否则找不到Fl_Native_File_Chooser）
+execute_process(COMMAND ${FLTK_CONFIG} --ldflags --use-images --use-nativefilechooser OUTPUT_VARIABLE FLTK_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+# 步骤2：验证版本（≥1.3.0）
+if(FLTK_REAL_VERSION VERSION_LESS "1.3.0")
+    message(FATAL_ERROR "FLTK version must be ≥ 1.3.0, found ${FLTK_REAL_VERSION}")
+else()
+    message(STATUS "Found FLTK version: ${FLTK_REAL_VERSION} (OK)")
+endif()
+
 # 3. 头文件目录（告诉CMake去哪里找#include的文件）
 include_directories(
     ${PROJECT_SOURCE_DIR}/include  # 原有自定义头文件目录
     ${PNG_INCLUDE_DIR}             # 新增：libpng的头文件目录（解决png.h找不到）
+    ${FLTK_INCLUDE_DIRS}
 )
 
 # 4. 收集要编译的源文件（src目录下的.cpp）
@@ -30,8 +45,15 @@ file(GLOB SOURCES
 # 5. 生成可执行文件（最终生成的程序名：main，可自定义）
 add_executable(main ${SOURCES})
 
-# ========== 新增：链接libpng库（编译时找到png相关函数） ==========
-target_link_libraries(main PRIVATE ${PNG_LIBRARIES})
+# # 1. 应用FLTK编译选项（解决FLTK头文件宏定义缺失）
+# target_compile_options(main PRIVATE ${FLTK_CXXFLAGS_LIST})
+
+# # 2. 链接FLTK + libpng（核心：解决Undefined symbols）
+# separate_arguments(FLTK_LDFLAGS_LIST UNIX_COMMAND "${FLTK_LDFLAGS}")
+# target_link_libraries(main PRIVATE
+#     ${PNG_LIBRARIES}       # libpng库
+#     ${FLTK_LDFLAGS_LIST}   # FLTK核心库（包含fltk、fltk_images、fltk_nativefilechooser）
+# )
 
 # ========== 可选：macOS下适配brew安装的libpng（兜底） ==========
 if(APPLE)
@@ -40,18 +62,17 @@ if(APPLE)
     set(PNG_LIBRARY "/opt/homebrew/lib/libpng.dylib" CACHE FILEPATH "libpng library")
     target_include_directories(main PRIVATE ${PNG_INCLUDE_DIR})
     target_link_libraries(main PRIVATE ${PNG_LIBRARY})
+
+    # 手动指定FLTK头文件路径
+    set(FLTK_INCLUDE_DIR "/opt/homebrew/include")
+    # 手动指定FLTK链接参数（无逗号问题）
+    set(FLTK_LDFLAGS "-L/opt/homebrew/lib -lfltk -lfltk_images -lfltk_nativefilechooser")
+
 endif()
 
-# # 6. 【可选但推荐】复制XML文件到编译目录（避免运行时找不到文件）
-# # 作用：编译后，scene_layout.xml会被复制到可执行文件同目录，直接运行即可
-# configure_file(
-#     ${PROJECT_SOURCE_DIR}/scene_layout.xml
-#     ${CMAKE_BINARY_DIR}/scene_layout.xml
-#     COPYONLY  # 仅复制，不修改
-# )
-
-# 7. 【可选】如果你的解析器依赖第三方库（如libxml2等XML解析库），需添加以下配置
-# 示例：如果用libxml2（大部分Linux/macOS自带，Windows需手动安装）
-# find_package(PNG REQUIRED)
-# target_include_directories(raytracer PRIVATE ${PNG_INCLUDE_DIR})
-# target_link_libraries(raytracer PRIVATE ${PNG_LIBRARIES})
+# 应用编译选项（直接写死，避免解析错误）
+target_compile_options(main PRIVATE -I/opt/homebrew/include -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE)
+# 链接FLTK（手动指定库）
+target_link_libraries(main PRIVATE
+    -L/opt/homebrew/lib -lfltk -lfltk_images
+)
