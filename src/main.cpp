@@ -9,6 +9,7 @@
 #include "Object.hpp"
 #include "Scene.hpp"
 #include "SceneXMLParser.hpp"
+#include "GUI.hpp"
 
 /**
  * @brief 计算一条特定光线最终看到的颜色
@@ -225,65 +226,51 @@ void render_blocks_round_robin(
     }
 }
 
-
-int main() {
-    SceneXMLParser parser;  // 实例化解析器（正确类名）
-    SceneData parsed_data;  // 存储解析后的原始数据（关键：不是直接的渲染Scene）
-    const std::string xml_path = "../scene/scene_layout.xml";
-
+/**
+ * 2. 新增：适配GUI的渲染函数（替换GUI.cpp中模拟的render_cb逻辑）
+ * 从GUI选择的XML文件读取场景，执行渲染，并将结果写入GUI的渲染缓冲区
+ */
+void gui_render_logic(const std::string& xml_path) {
+    // 1. 解析XML场景文件（复用原有逻辑）
+    SceneXMLParser parser;
+    SceneData parsed_data;
     try {
-        // 调用正确的解析接口：parseFile
         parsed_data = parser.parseFile(xml_path);
-        std::cerr << "Parse successfully" << xml_path << ", get " 
-                  << parsed_data.objects.size() << " objects\n";
+        std::cerr << "解析场景成功：" << xml_path << "，共 " << parsed_data.objects.size() << " 个物体\n";
     } catch (const std::exception& e) {
-        std::cerr << "Parse failed: " << e.what() << std::endl;
-        return -1;
+        fl_alert("场景解析失败：%s", e.what());
+        return;
     }
 
-    // Scene world;
-    Scene render_scene;  // 用于渲染的最终场景
+    // 2. 构建渲染场景
+    Scene render_scene;
     convertSceneDataToRenderScene(parsed_data, render_scene);
 
-    // ========== 图像参数（可从XML全局设置扩展） ==========
+    // 3. 图像/相机参数（复用原有逻辑）
     const int image_width = 400;
     const int samples_per_pixel = 400;
     const int max_depth = 50;
-
-    // ========== 相机初始化（从XML解析的值） ==========
-    float aspect_ratio = camera_aspect_ratio; // 从XML读取
+    float aspect_ratio = camera_aspect_ratio;
     int image_height = static_cast<int>(image_width / aspect_ratio);
     float viewport_width = aspect_ratio * camera_viewport_height;
-    Point3 origin = camera_origin; // 从XML读取
+    Point3 origin = camera_origin;
     Vec3 horizontal = Vec3(viewport_width, 0, 0);
     Vec3 vertical = Vec3(0, camera_viewport_height, 0);
     Point3 lower_left_corner = origin - horizontal/2 - vertical/2 - Vec3(0, 0, camera_focal_length);
 
-    // 初始化像素缓冲区
+    // 4. 初始化像素缓冲区
     pixel_buffer.resize(image_width * image_height);
     completed_lines.store(0, std::memory_order_relaxed);
-    int block_size = 32; // 关键：块大小（适配 Apple Silicon 缓存，建议 16/32/64）
+    int block_size = 32;
 
-    // ========== 记录渲染开始时间 ==========
+    // 5. 多线程渲染（复用原有逻辑）
     auto render_start = std::chrono::high_resolution_clock::now();
-
-    // 获取 CPU 核心数（Apple Silicon 自动识别 M 系列核心数）
-    int num_threads = std::thread::hardware_concurrency();
-    if (num_threads == 0) num_threads = 4; // 兜底
+    int num_threads = std::thread::hardware_concurrency() ?: 4;
     std::vector<std::thread> threads;
-    std::cerr << "====================================\n";
-    std::cerr << "CPU 信息检测：\n";
-    std::cerr << "  核心数：" << num_threads << "\n";
-    std::cerr << "====================================\n\n";
-
-    // 启动线程：每个线程分配唯一ID（0~num_threads-1）
     for (int t = 0; t < num_threads; ++t) {
-        // emplace_back 直接在容器的内存空间里构造 thread 对象，省去了 “创建临时对象→移动 / 拷贝” 的步骤。它会将传入的参数完美转发给元素类型（这里是 std::thread）的构造函数
         threads.emplace_back(
             render_blocks_round_robin,
-            t,                          // 线程ID
-            num_threads,                // 总线程数
-            block_size,
+            t, num_threads, block_size,
             std::ref(render_scene),
             std::ref(origin), std::ref(horizontal), std::ref(vertical),
             std::ref(lower_left_corner),
@@ -293,51 +280,85 @@ int main() {
             std::ref(completed_lines)
         );
     }
+    for (auto& t : threads) t.join();
 
-    // 阻塞主线程，等待所有子线程完成
-    for (auto& t : threads) {
-        t.join();
-    }
-
-    // ========== 计算并输出渲染耗时 ==========
+    // 6. 计算渲染耗时
     auto render_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> render_duration = render_end - render_start;
+    std::cerr << "渲染完成，耗时：" << render_duration.count() << " 秒\n";
 
-    // 计算毫秒级耗时（也可以用秒：std::chrono::duration<double>）
-    std::chrono::duration<double, std::milli> render_duration = render_end - render_start;
-    std::cerr << "\nRendering completed\n";
-    std::cerr << "Total render time: " << render_duration.count() << " ms (" 
-              << render_duration.count() / 1000.0 << " seconds)\n";
+    // 7. 将渲染结果写入GUI的全局缓冲区（替换GUI的模拟数据）
+    app_state.buffer_width = image_width;
+    app_state.buffer_height = image_height;
+    // 释放原有缓冲区（避免内存泄漏）
+    if (app_state.render_buffer) free(app_state.render_buffer);
+    // 分配新缓冲区（RGB格式，每个像素3字节）
+    app_state.render_buffer = malloc(image_width * image_height * 3);
+    if (!app_state.render_buffer) {
+        fl_alert("GUI渲染缓冲区分配失败！");
+        return;
+    }
 
-    // ===== （后面的文件写入、耗时统计逻辑完全不变）=====
-    std::ofstream outfile("test.ppm");
-    outfile << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+    // 8. 拷贝像素数据到GUI缓冲区
+    unsigned char* gui_buf = (unsigned char*)app_state.render_buffer;
+    int idx = 0;
     for (const auto& pixel : pixel_buffer) {
-        outfile << pixel.r << ' ' << pixel.g << ' ' << pixel.b << '\n';
-    }
-    outfile.close();
-
-    // ===== 2. 新增逻辑：将像素缓冲区转换为 PPMImage 并写入 PNG 文件 =====
-    try {
-        PPMImage png_img;
-        png_img.width = image_width;
-        png_img.height = image_height;
-        png_img.max_color = 255;
-        png_img.pixels.resize(image_width * image_height * 3);
-
-        // 将 pixel_buffer 转换为 PPMImage 的像素格式（RGB 字节数组）
-        int idx = 0;
-        for (const auto& pixel : pixel_buffer) {
-            png_img.pixels[idx++] = static_cast<unsigned char>(pixel.r);
-            png_img.pixels[idx++] = static_cast<unsigned char>(pixel.g);
-            png_img.pixels[idx++] = static_cast<unsigned char>(pixel.b);
-        }
-
-        // 写入 PNG 文件
-        write_png(png_img, "output.png");
-        std::cerr << "PNG 文件已保存：output.png\n";
-    } catch (const std::exception& e) {
-        std::cerr << "保存 PNG 文件失败：" << e.what() << std::endl;
+        gui_buf[idx++] = static_cast<unsigned char>(pixel.r);
+        gui_buf[idx++] = static_cast<unsigned char>(pixel.g);
+        gui_buf[idx++] = static_cast<unsigned char>(pixel.b);
     }
 
-    return 0;
+    app_state.is_rendered = true;
+    fl_message("渲染完成！耗时：%.2f 秒", render_duration.count());
+}
+
+/**
+ * 3. 重写GUI的渲染回调（替换GUI.cpp中的render_cb）
+ */
+void custom_render_cb(Fl_Widget*, void*) {
+    if (app_state.selected_file.empty()) {
+        fl_alert("请先选择待渲染的XML场景文件！");
+        return;
+    }
+    // 执行真实渲染逻辑
+    gui_render_logic(app_state.selected_file);
+}
+
+/**
+ * 4. 重写GUI的文件选择回调（过滤XML文件）
+ */
+void custom_select_file_cb(Fl_Widget*, void*) {
+    Fl_Native_File_Chooser file_chooser;
+    file_chooser.title("选择XML场景文件");
+    file_chooser.type(Fl_Native_File_Chooser::BROWSE_FILE);
+    // 仅显示XML文件（匹配场景解析逻辑）
+    file_chooser.filter("XML场景文件\t*.xml\n所有文件\t*");
+    file_chooser.directory("../scene"); // 默认场景目录
+
+    if (file_chooser.show() == 0) {
+        app_state.selected_file = file_chooser.filename();
+        fl_message("已选择场景文件：%s", app_state.selected_file.c_str());
+    }
+}
+
+int main() {
+    // ========== GUI初始化 ==========
+    Fl_Window* main_win = init_gui(400, 300); // 创建400x300的GUI窗口
+    // 替换GUI默认的回调函数（使用自定义逻辑）
+    // 1. 获取GUI按钮并重新绑定回调
+    Fl_Button* select_btn = (Fl_Button*)main_win->child(0); // 第一个子控件：选择文件按钮
+    Fl_Button* render_btn = (Fl_Button*)main_win->child(1); // 第二个子控件：渲染按钮
+    Fl_Button* save_btn = (Fl_Button*)main_win->child(2);   // 第三个子控件：保存PNG按钮
+    
+    select_btn->callback(custom_select_file_cb); // 自定义文件选择（仅选XML）
+    render_btn->callback(custom_render_cb);      // 自定义渲染逻辑（真实渲染）
+    // 保存PNG回调复用GUI.cpp的save_png_cb（无需修改）
+
+    // ========== 启动GUI主循环 ==========
+    main_win->show();
+    int ret = Fl::run(); // FLTK主事件循环
+
+    // ========== 清理资源 ==========
+    cleanup_resources(main_win);
+    return ret;
 }

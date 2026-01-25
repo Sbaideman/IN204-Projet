@@ -107,7 +107,7 @@ void save_png_cb(Fl_Widget*, void*) {
     save_chooser.title("保存渲染结果为PNG");
     save_chooser.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
     save_chooser.filter("PNG文件\t*.png");
-    save_chooser.preset_file("render_result.png");
+    save_chooser.preset_file("render_result.png"); // 默认文件名
 
     if (save_chooser.show() == 0) {
         std::string save_path = save_chooser.filename();
@@ -130,7 +130,7 @@ void save_png_cb(Fl_Widget*, void*) {
  */
 Fl_Window* init_gui(int width = 400, int height = 300) {
     // 注册图片格式（FLTK内置）
-    fl_register_images();
+    // fl_register_images();
 
     // 创建主窗口
     Fl_Window* win = new Fl_Window(width, height, "渲染工具GUI");

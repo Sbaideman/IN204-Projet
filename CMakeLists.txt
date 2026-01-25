@@ -45,16 +45,6 @@ file(GLOB SOURCES
 # 5. 生成可执行文件（最终生成的程序名：main，可自定义）
 add_executable(main ${SOURCES})
 
-# # 1. 应用FLTK编译选项（解决FLTK头文件宏定义缺失）
-# target_compile_options(main PRIVATE ${FLTK_CXXFLAGS_LIST})
-
-# # 2. 链接FLTK + libpng（核心：解决Undefined symbols）
-# separate_arguments(FLTK_LDFLAGS_LIST UNIX_COMMAND "${FLTK_LDFLAGS}")
-# target_link_libraries(main PRIVATE
-#     ${PNG_LIBRARIES}       # libpng库
-#     ${FLTK_LDFLAGS_LIST}   # FLTK核心库（包含fltk、fltk_images、fltk_nativefilechooser）
-# )
-
 # ========== 可选：macOS下适配brew安装的libpng（兜底） ==========
 if(APPLE)
     # 强制指定brew安装的libpng路径（防止CMake识别不到）
