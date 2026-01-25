@@ -5,6 +5,7 @@
 #include <atomic>
 #include <vector>
 #include <mutex>
+#include "SavePng.hpp"
 #include "Object.hpp"
 #include "Scene.hpp"
 #include "SceneXMLParser.hpp"
@@ -314,6 +315,29 @@ int main() {
         outfile << pixel.r << ' ' << pixel.g << ' ' << pixel.b << '\n';
     }
     outfile.close();
+
+    // ===== 2. 新增逻辑：将像素缓冲区转换为 PPMImage 并写入 PNG 文件 =====
+    try {
+        PPMImage png_img;
+        png_img.width = image_width;
+        png_img.height = image_height;
+        png_img.max_color = 255;
+        png_img.pixels.resize(image_width * image_height * 3);
+
+        // 将 pixel_buffer 转换为 PPMImage 的像素格式（RGB 字节数组）
+        int idx = 0;
+        for (const auto& pixel : pixel_buffer) {
+            png_img.pixels[idx++] = static_cast<unsigned char>(pixel.r);
+            png_img.pixels[idx++] = static_cast<unsigned char>(pixel.g);
+            png_img.pixels[idx++] = static_cast<unsigned char>(pixel.b);
+        }
+
+        // 写入 PNG 文件
+        write_png(png_img, "output.png");
+        std::cerr << "PNG 文件已保存：output.png\n";
+    } catch (const std::exception& e) {
+        std::cerr << "保存 PNG 文件失败：" << e.what() << std::endl;
+    }
 
     return 0;
 }

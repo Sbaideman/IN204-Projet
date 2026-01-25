@@ -4,14 +4,7 @@
 #include <string>
 #include <stdexcept>
 #include <png.h>
-
-// 存储PPM图像数据的结构体
-struct PPMImage {
-    int width;
-    int height;
-    int max_color;
-    std::vector<unsigned char> pixels; // 按RGB顺序存储，每个像素3个字节
-};
+#include "SavePng.hpp"
 
 /**
  * @brief 解析P3格式的PPM文件
