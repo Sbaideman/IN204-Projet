@@ -10,6 +10,7 @@
 #include "Scene.hpp"
 #include "SceneXMLParser.hpp"
 #include "GUI.hpp"
+#include <omp.h>
 
 /**
  * @brief 计算一条特定光线最终看到的颜色
@@ -226,6 +227,63 @@ void render_blocks_round_robin(
     }
 }
 
+// 改为OMP并行的行渲染函数
+void render_omp(const Scene& render_scene,
+                const Point3& origin, const Vec3& horizontal, const Vec3& vertical,
+                const Point3& lower_left_corner,
+                int image_width, int image_height,
+                int samples_per_pixel, int max_depth,
+                std::vector<Pixel>& pixel_buffer,
+                std::atomic<int>& completed_lines) {
+    
+    // 修复：schedule 子句移到 for 指令后，parallel 仅创建并行区域
+    #pragma omp parallel
+    {
+        // 仅主线程初始化进度（可选）
+        #pragma omp master
+        {
+            std::cerr << "\rScanlines completed: 0/" << image_height << ' ' << std::flush;
+        }
+
+        // 核心修复：schedule(dynamic, 32) 附加在 for 指令上
+        #pragma omp for schedule(dynamic, 32)
+        for (int j = 0; j < image_height; ++j) {
+            int original_j = image_height - 1 - j;
+            for (int i = 0; i < image_width; ++i) {
+                Color pixel_color(0,0,0);
+                for (int s = 0; s < samples_per_pixel; ++s) {
+                    auto u = (i + random_double()) / (image_width-1);
+                    auto v = (original_j + random_double()) / (image_height-1);
+                    Ray r(origin, lower_left_corner + u*horizontal + v*vertical - origin);
+                    pixel_color += ray_color(r, render_scene, max_depth);
+                }
+                auto scale = 1.0 / samples_per_pixel;
+                auto r = sqrt(pixel_color.x() * scale);
+                auto g = sqrt(pixel_color.y() * scale);
+                auto b = sqrt(pixel_color.z() * scale);
+                int ir = static_cast<int>(256 * clamp(r, 0.0, 0.999));
+                int ig = static_cast<int>(256 * clamp(g, 0.0, 0.999));
+                int ib = static_cast<int>(256 * clamp(b, 0.0, 0.999));
+                size_t idx = j * image_width + i;
+                pixel_buffer[idx] = {ir, ig, ib};
+            }
+            // 原子更新进度
+            completed_lines.fetch_add(1, std::memory_order_relaxed);
+            // 仅主线程输出进度（替代 master 指令）
+            if (omp_get_thread_num() == 0) {
+                std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
+                          << "/" << image_height << ' ' << std::flush;
+            }
+        }
+
+        // 并行结束后主线程输出最终进度
+        #pragma omp master
+        {
+            std::cerr << "\rScanlines completed: " << image_height << "/" << image_height << " ✔️\n";
+        }
+    }
+}
+
 /**
  * 2. 新增：适配GUI的渲染函数（替换GUI.cpp中模拟的render_cb逻辑）
  * 从GUI选择的XML文件读取场景，执行渲染，并将结果写入GUI的渲染缓冲区
@@ -265,22 +323,34 @@ void gui_render_logic(const std::string& xml_path) {
 
     // 5. 多线程渲染（复用原有逻辑）
     auto render_start = std::chrono::high_resolution_clock::now();
-    int num_threads = std::thread::hardware_concurrency() ?: 4;
-    std::vector<std::thread> threads;
-    for (int t = 0; t < num_threads; ++t) {
-        threads.emplace_back(
-            render_blocks_round_robin,
-            t, num_threads, block_size,
-            std::ref(render_scene),
-            std::ref(origin), std::ref(horizontal), std::ref(vertical),
-            std::ref(lower_left_corner),
-            image_width, image_height,
-            samples_per_pixel, max_depth,
-            std::ref(pixel_buffer),
-            std::ref(completed_lines)
-        );
-    }
-    for (auto& t : threads) t.join();
+    
+    // int num_threads = std::thread::hardware_concurrency() ?: 4;
+    // std::vector<std::thread> threads;
+    // for (int t = 0; t < num_threads; ++t) {
+    //     threads.emplace_back(
+    //         render_blocks_round_robin,
+    //         t, num_threads, block_size,
+    //         std::ref(render_scene),
+    //         std::ref(origin), std::ref(horizontal), std::ref(vertical),
+    //         std::ref(lower_left_corner),
+    //         image_width, image_height,
+    //         samples_per_pixel, max_depth,
+    //         std::ref(pixel_buffer),
+    //         std::ref(completed_lines)
+    //     );
+    // }
+    // for (auto& t : threads) t.join();
+
+    // 设置OMP线程数（可选，默认是硬件核心数）
+    omp_set_num_threads(std::thread::hardware_concurrency() ?: 4);
+    // 执行OMP并行渲染
+    render_omp(render_scene,
+               origin, horizontal, vertical,
+               lower_left_corner,
+               image_width, image_height,
+               samples_per_pixel, max_depth,
+               pixel_buffer,
+               completed_lines);
 
     // 6. 计算渲染耗时
     auto render_end = std::chrono::high_resolution_clock::now();
