@@ -9,70 +9,70 @@
 #include <sstream>
 #include <algorithm>
 
-// 通用属性映射（key-value）
+// Generic property mapping (key-value)
 using AttrMap = std::unordered_map<std::string, std::string>;
 using NestedAttrMap = std::unordered_map<std::string, AttrMap>;
 
-// 材质结构体
+// Material Structure
 struct MaterialObject {
-    std::string type;          // 材质类型：matte/metal/glass
-    NestedAttrMap properties; // 材质属性（color/ior/fuzz等）
+    std::string type;          // Material type: matte/metal/glass
+    NestedAttrMap properties;  // Material properties (color/ior/fuzz, etc.)
 };
 
-// 场景物体结构体
+// Scene object structure
 struct SceneObject {
     std::string id;
     std::string type;
-    NestedAttrMap properties; // position/size/color等子属性
+    NestedAttrMap properties;  // Sub-properties such as position, size, and color
     MaterialObject material;
 };
 
-// 相机结构体
+// Camera structure
 struct Camera {
     std::string id;
     std::string type;
-    NestedAttrMap properties; // position/look_at/fov等子属性
+    NestedAttrMap properties;  // Sub-attributes such as position/look_at/fov
 };
 
-// 全局设置结构体
+// Global settings structure
 struct GlobalSettings {
-    NestedAttrMap properties; // background_color/scene_size等子属性
+    NestedAttrMap properties; // Sub-properties like background_color/scene_size
 };
 
-// 场景数据总结构体
+// Main structure holding all scene data
 struct SceneData {
     GlobalSettings global_settings;
     std::vector<SceneObject> objects;
     Camera camera;
 };
 
-// XML解析器类
+// XML Parser Class
 class SceneXMLParser {
 public:
-    // 解析XML文件
+    // Parses an XML file
     SceneData parseFile(const std::string& filePath);
-    // 解析XML字符串
+    // Parses an XML string content
     SceneData parseString(const std::string& xmlContent);
 
 private:
-    // 移除XML注释
+    // Removes XML comments
     std::string removeComments(const std::string& xml);
-    // 解析属性字符串（如 r="255" g="255" b="255"）
+    // Parses attribute strings (e.g., r="255" g="255" b="255")
     AttrMap parseAttributes(const std::string& attrStr);
-    // 处理开始标签（<tag ...>）
+    // Processes start tags (<tag ...>)
     void processStartTag(const std::string& tagContent);
-    // 处理结束标签（</tag>）
+    // Processes end tags (</tag>)
     void processEndTag(const std::string& tagName);
-    // 处理自闭合标签（<tag .../>）
+    // Processes self-closing tags (<tag .../>)
     void processSelfClosingTag(const std::string& tagContent);
 
-    // 临时状态变量
+    // Temporary state variables
     SceneData m_sceneData;
-    std::string m_currentParentTag; // 当前父标签（global_settings/object/camera）
-    SceneObject m_currentObject;    // 临时存储当前解析的物体
-    Camera m_currentCamera;         // 临时存储当前解析的相机
-    GlobalSettings m_currentGlobal; // 临时存储当前解析的全局设置
-    MaterialObject m_currentMaterial;      // 新增：临时存储当前解析的材质
+    std::string m_currentParentTag; // Current parent tag (global_settings/object/camera)
+    SceneObject m_currentObject;    // Temporarily stores the object currently being parsed
+    Camera m_currentCamera;         // Temporarily stores the camera currently being parsed
+    GlobalSettings m_currentGlobal; // Temporarily stores the global settings currently being parsed
+    MaterialObject m_currentMaterial; // Temporarily stores the material currently being parsed
 };
 
 #endif // SCENE_XML_PARSER_H

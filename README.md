@@ -1,74 +1,83 @@
-# IN204-Projet
+# Object-Oriented Ray Tracer
 
-根据文档内容，需要完成的项目内容总结如下：
-## 1. 项目核心目标
-开发一套 C++ 库 和一个 测试应用程序，利用光线追踪技术生成和渲染 3D 场景。
+## 1. Project Analysis
 
-- 库 A：用于描述场景中的元素（物体、光源等）。
-- 库 B：包含不同的渲染引擎（核心算法）。
-- 应用程序：用于加载场景描述、运行渲染引擎并显示/保存结果。
+### 1.1 Project Description
+This project is a C++ library and application designed to generate photorealistic images using **Path Tracing** techniques. It simulates the physical propagation of light in an environment—including reflection, refraction, and global illumination—to create high-quality 3D renderings.
 
-## 2. 核心功能需求
-### A. 渲染能力
-**基本几何体：** 支持球体、平面、长方体（立方体）。\
-**进阶几何体：** 支持网格（Meshes）或由面构成的物体，支持物体的组合（并集/交集）。\
-**光照与材质：**
-- 支持点光源（基础），进阶支持有扩散锥的光源、彩色光源。
-- 支持颜色。
-- 支持 纹理（Textures）。
-- 支持 透明度。
-- 支持 反射（带衰减）和折射/衍射。
-- 支持阴影。
-### B. 场景描述语言
-- 你需要设计或定义一种 文件格式 来描述场景（物体的位置、属性、光源等）。
-- 可以使用 XML，也可以自定义一种 Ad hoc 语言。
-- 编写一个读取器（Parser），将文件内容转换为程序中的对象。
-### C. 用户界面与交互
-- 提供一个程序，允许用户选择场景文件。
-- 选择渲染引擎。
-- 显示渲染出的图像。
-- 支持将图像保存为 .jpg 或 .png 格式。
-- （进阶）简单的图形界面（GUI）用于导航或参数调整。
+The core objective is to construct a modular and extensible architecture based on **Object-Oriented Programming (OOP)** principles. Users can define 3D scenes via XML configuration files, specifying geometry, material properties, and camera settings. To handle the high computational load of ray tracing, the engine utilizes multi-threading optimizations tailored for modern multi-core processors.
 
-## 3. 技术与架构要求
-### A. 面向对象设计 (OOD)
-这是项目的重点。架构必须是 模块化 和 可扩展 的：
-- 基类设计：例如 SCENE_BASE_OBJECT（场景基类对象）和 OBJECT_BASE_SURFACE（表面基类）。
-- 多态性：新增物体形状（如圆柱体）或新材质时，不应修改渲染引擎的核心代码。
-- 分离：场景描述与渲染计算分离。
-### B. 性能优化
-光线追踪计算量大，文档明确要求必须包含优化：
-- 多线程（Multithreading）：利用多核 CPU。
-- 或者 SIMD / GPU 加速。
-- 或者混合方法。
+### 1.2 Project File Structure
+*   `src/`: Contains source code files (`.cpp`).
+    *   `main.cpp`: Entry point and workflow control.
+    *   `RenderUtils.cpp`: Core rendering logic and scene conversion factory.
+    *   `SceneXMLParser.cpp`: Implementation of XML parsing logic.
+*   `include/`: Contains header files (`.hpp`).
+    *   `Object.hpp`: Defines concrete geometric shapes (Sphere, Plane, Parallelepiped).
+    *   `Material.hpp`: Defines material behaviors (Matte, Metal, Glass, Light).
+    *   `Scene.hpp`: Scene container responsible for managing object lists.
+    *   `Vec3.hpp`: Vector mathematics library.
+    *   `RenderUtils.hpp` & `SceneXMLParser.hpp`: Auxiliary interface definitions.
+*   `scene/`: Contains XML scene configuration files.
 
-## 4. 实施路线图 (推荐步骤)
-文档建议分四个阶段（Phase）来开发演示程序（Démonstrateur）：
-### 阶段 A (核心原型)：
-- 实现核心算法。
-- 仅支持最简单的物体（球、面、立方体）。
-- 简单的点光源和均匀表面颜色。
-### 阶段 B (数据驱动)：
-- 定义场景描述文件格式。
-- 实现文件读取器，从文件加载场景。
-### 阶段 C (增强功能)：
-- 增加支持的物体数量和类型。
-- 引入 纹理。
-- 引入复杂光源。
-### 阶段 D (优化与交付)：
-- 实现算法的 并行化/加速。
-- 开发图形界面 (GUI)。
-- 实现图片保存功能 (.jpg/.png)。
+### 1.3 Implemented Features
+**Core Rendering Engine:**
+*   **Path Tracing Algorithm:** Implements recursive ray tracing using Monte Carlo integration to solve anti-aliasing and soft shadow problems.
+*   **Gamma Correction:** Applies Gamma 2.0 correction to ensure accurate color output.
 
-## 5. 需要提交的交付物
-**1. 分析与设计文档：**
-- 使用场景分析。
-- 功能分析。
-- 架构设计（类图、模块交互、扩展性设计）。
+**Geometry Support:**
+*   **Basic Primitives:** Spheres, Infinite Planes.
+*   **Complex Shapes:** Parallelepipeds (Boxes), constructed by combining multiple quadrilaterals.
+*   **Scene Management:** Uses the Composite Pattern to manage complex scenes containing multiple objects.
 
-**2. 代码实现：**
-- 文档化的 C++ 源代码。
-- 包含场景描述库、渲染引擎库、测试程序。
+**Materials & Optics:**
+*   **Matte (Lambertian):** Simulates rough diffuse surfaces.
+*   **Metal:** Simulates specular reflection with adjustable fuzziness.
+*   **Glass (Dielectric):** Simulates transparent media, implementing Snell's Law and the Fresnel effect (Schlick's approximation).
+*   **Emissive Lights:** Supports volumetric area lights to illuminate the scene.
 
-**3. 技术文档：**
-- 解释类的选择和架构模型。
+**System Architecture:**
+*   **XML Scene Parser:** Custom parser to load scene configurations, camera settings, and global settings from XML files.
+*   **Multi-threading Acceleration:** Implements a **Block-based Round-Robin** scheduling strategy to balance the load across CPU cores.
+*   **Image Output:** Generates images in PPM format.
+
+### 1.4 Usage of Object-Oriented Concepts
+This project deeply applies OOP concepts to ensure modularity and maintainability:
+
+*   **Polymorphism & Inheritance (Mandatory):**
+    *   `SceneBaseObject`: Abstract base class for all geometries. It defines a unified `hit()` interface.
+    *   `Material`: Abstract base class for surface properties. Virtual functions `scatter()` and `emit()` are overridden by concrete material classes to implement polymorphic behavior.
+*   **Smart Pointers (Mandatory):**
+    *   Extensive usage of `std::shared_ptr` within the scene graph (`Scene`) to automatically manage memory and prevent leaks.
+*   **STL Containers (Mandatory):**
+    *   Uses `std::vector` to manage object lists and pixel buffer data.
+*   **Encapsulation (Mandatory):**
+    *   Classes like `Ray`, `Vec3`, and `HitRecord` encapsulate low-level mathematical operations and state data.
+*   **Parallelism (Bonus):**
+    *   Utilizes `std::thread` and `std::atomic` to achieve multi-core parallel rendering.
+*   **Exception Handling (Bonus):**
+    *   The XML parsing module uses `try-catch` blocks to capture and gracefully handle format errors.
+
+---
+
+## 2. Compilation & Execution
+
+This project is built using **CMake**. Run the following commands from the project root directory:
+
+**1. Build:**
+```bash
+# For Windows
+mkdir build 
+cd build
+cmake ..
+cmake --build . --config Release
+```
+
+**2. Run:** \
+Ensure the ../scene/scene_layout.xml file exists relative to the executable (this is the default configuration), then run:
+```bash
+./main
+```
+
+**3. View Results:** \
+Upon completion, a test.ppm image file will be generated in the build directory. You can view it using any PPM-compatible viewer (e.g., IrfanView, GIMP, or VS Code extensions).

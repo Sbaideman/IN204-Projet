@@ -104,22 +104,20 @@ public:
     virtual bool scatter(
         const Ray& r_in, const HitRecord& rec, Color& attenuate_color, Ray& r_out
     ) const {
-        // 1. 计算完美的反射向量
+        // 1. Calculate the reflection vector
         Vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
         
-        // 2. 添加模糊效果
+        // 2. Add a blur effect
         r_out = Ray(rec.p, reflected + fuzz * random_in_unit_sphere());
         
         attenuate_color = albedo;
         
-        // 3. 检查反射光线是否有效
-        // 如果模糊处理后的光线射入了物体内部，则吸收该光线
+        // 3. Check if the reflected light is effective
+        // If the blurred light enters the object, then the light will be absorbed.
         return (dot(r_out.direction(), rec.normal) > 0);
     }
 
 private:
-    // 为了让 Metal 类也能访问这个函数，我们把它也放在这里
-    // 注意：更好的做法是把这个函数移到 Utils.h 中
     static Vec3 random_in_unit_sphere() {
         while (true) {
             auto p = Vec3(random_double(-1,1), random_double(-1,1), random_double(-1,1));
@@ -159,12 +157,12 @@ public:
         bool cannot_refract = refraction_ratio * sin_theta > 1.0;
         Vec3 direction;
 
-        // Schlick 近似计算反射概率
+        // Schlick approximation of reflection probability
         if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_double()) {
-            // 光线全反射
+            // Total internal reflection
             direction = reflect(unit_direction, rec.normal);
         } else {
-            // 光线全折射
+            // Total refraction of light
             direction = refract(unit_direction, rec.normal, refraction_ratio);
         }
 
@@ -195,15 +193,14 @@ public:
 
     PointLight(Color c) : emit_color(c) {}
 
-    // 1. 散射：光源通常不反射光线（简单起见），或者说它覆盖了反射。
-    // 返回 false 表示光线到了这里就结束了，不再继续反弹ov。
+    // Scattering: The simplified light source does not reflect light.
     virtual bool scatter(
         const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
     ) const {
         return false;
     }
 
-    // 2. 发光：返回光源的颜色
+    // Emission: Returns the color of the light source
     virtual Color emit(const Point3& p) const {
         return emit_color;
     }
