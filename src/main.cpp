@@ -330,11 +330,8 @@ double gui_render_logic(const std::string& xml_path) {
     float viewport_width = aspect_ratio * camera_viewport_height;
     Point3 origin = camera_origin;
     Vec3 horizontal = Vec3(viewport_width, 0, 0);
-    Vec3 vertical = Vec3(0, cam_config.viewport_height, 0);
-    Point3 lower_left_corner = cam_config.origin 
-                             - horizontal/2 
-                             - vertical/2 
-                             - Vec3(0, 0, cam_config.focal_length);
+    Vec3 vertical = Vec3(0, camera_viewport_height, 0);
+    Point3 lower_left_corner = origin - horizontal/2 - vertical/2 - Vec3(0, 0, camera_focal_length);
 
     // 4. 初始化像素缓冲区
     pixel_buffer.resize(image_width * image_height);

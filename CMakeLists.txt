@@ -1,6 +1,10 @@
 # 1. 指定CMake最低版本（兼容大部分系统）
 cmake_minimum_required(VERSION 3.10)
 
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Deployment target" FORCE)
+endif()
+
 # 2. 项目名称 + 指定C++标准
 project(SceneXMLParser_Project LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)        
@@ -67,22 +71,12 @@ file(GLOB SOURCES
 add_executable(main ${SOURCES})
 
 # ========== macOS下适配libpng/FLTK（不变） ==========
-if(APPLE)
-    set(PNG_INCLUDE_DIR "/opt/homebrew/include" CACHE PATH "libpng include dir")
-    set(PNG_LIBRARY "/opt/homebrew/lib/libpng.dylib" CACHE FILEPATH "libpng library")
-    target_include_directories(main PRIVATE ${PNG_INCLUDE_DIR})
-    target_link_libraries(main PRIVATE ${PNG_LIBRARY})
-
-    set(FLTK_INCLUDE_DIR "/opt/homebrew/include")
-    set(FLTK_LDFLAGS "-L/opt/homebrew/lib -lfltk -lfltk_images -lfltk_nativefilechooser")
-endif()
-
-# 应用编译选项（不变）
-target_compile_options(main PRIVATE -I/opt/homebrew/include -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE)
-
 # 链接库（补全OpenMP）
 target_link_libraries(main PRIVATE
-    -L/opt/homebrew/lib -lfltk -lfltk_images
+    -L/opt/homebrew/lib -lfltk
     ${PNG_LIBRARIES}
     ${OpenMP_CXX_LIBRARIES}  # 链接libomp库
 )
+
+# 应用编译选项（不变）
+target_compile_options(main PRIVATE -I/opt/homebrew/include -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE)
