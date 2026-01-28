@@ -378,8 +378,44 @@ void gui_render_logic(const std::string& xml_path) {
         gui_buf[idx++] = static_cast<unsigned char>(pixel.b);
     }
 
+    // ===== 新增：9. 将渲染结果显示到GUI的显示框 =====
+    if (app_state.render_display_box && app_state.render_buffer) {
+        // ① 转换为FLTK的RGB图像（3字节/像素）
+        Fl_RGB_Image* rgb_img = new Fl_RGB_Image(
+            (unsigned char*)app_state.render_buffer,
+            image_width,
+            image_height,
+            3 // RGB格式（无Alpha通道）
+        );
+
+        // ② 自适应缩放（保持宽高比，适配显示框）
+        Fl_Box* display_box = app_state.render_display_box;
+        int box_w = display_box->w();
+        int box_h = display_box->h();
+        float img_aspect = (float)image_width / image_height;
+        float box_aspect = (float)box_w / box_h;
+        int draw_w, draw_h;
+
+        if (img_aspect > box_aspect) {
+            // 图像更宽，按显示框宽度缩放
+            draw_w = box_w;
+            draw_h = static_cast<int>(box_w / img_aspect);
+        } else {
+            // 图像更高，按显示框高度缩放
+            draw_h = box_h;
+            draw_w = static_cast<int>(box_h * img_aspect);
+        }
+
+        // ③ 缩放图像并显示
+        Fl_Image* scaled_img = rgb_img->copy(draw_w, draw_h);
+        delete rgb_img; // 释放原图像（避免内存泄漏）
+        display_box->image(scaled_img); // 设置到显示框
+        display_box->redraw(); // 强制重绘（立即显示）
+    }
+
     app_state.is_rendered = true;
-    fl_message("渲染完成！耗时：%.2f 秒", render_duration.count());
+    set_status("Render completed!", FL_DARK_GREEN);
+    app_state.render_display_box->redraw();
 }
 
 /**
@@ -407,7 +443,8 @@ void custom_select_file_cb(Fl_Widget*, void*) {
 
     if (file_chooser.show() == 0) {
         app_state.selected_file = file_chooser.filename();
-        fl_message("已选择场景文件：%s", app_state.selected_file.c_str());
+        set_status("File chosen: " + app_state.selected_file,
+               FL_DARK_GREEN);
     }
 }
 
@@ -416,9 +453,9 @@ int main() {
     Fl_Window* main_win = init_gui(400, 300); // 创建400x300的GUI窗口
     // 替换GUI默认的回调函数（使用自定义逻辑）
     // 1. 获取GUI按钮并重新绑定回调
-    Fl_Button* select_btn = (Fl_Button*)main_win->child(0); // 第一个子控件：选择文件按钮
-    Fl_Button* render_btn = (Fl_Button*)main_win->child(1); // 第二个子控件：渲染按钮
-    Fl_Button* save_btn = (Fl_Button*)main_win->child(2);   // 第三个子控件：保存PNG按钮
+    Fl_Button* select_btn = (Fl_Button*)main_win->child(2); // 第一个子控件：选择文件按钮
+    Fl_Button* render_btn = (Fl_Button*)main_win->child(3); // 第二个子控件：渲染按钮
+    Fl_Button* save_btn = (Fl_Button*)main_win->child(4);   // 第三个子控件：保存PNG按钮
     
     select_btn->callback(custom_select_file_cb); // 自定义文件选择（仅选XML）
     render_btn->callback(custom_render_cb);      // 自定义渲染逻辑（真实渲染）

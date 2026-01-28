@@ -114,28 +114,3 @@ void write_png(const PPMImage& img, const std::string& filename) {
     fclose(fp);
     png_destroy_write_struct(&png_ptr, &info_ptr);
 }
-
-// int main(int argc, char* argv[]) {
-//     if (argc != 3) {
-//         std::cerr << "使用方法: " << argv[0] << " <输入PPM文件路径> <输出PNG文件路径>\n";
-//         std::cerr << "示例: " << argv[0] << " test.ppm output.png\n";
-//         return 1;
-//     }
-
-//     try {
-//         // 解析PPM文件
-//         std::cout << "正在解析PPM文件: " << argv[1] << std::endl;
-//         PPMImage img = parse_ppm(argv[1]);
-//         std::cout << "解析成功 - 宽: " << img.width << ", 高: " << img.height << std::endl;
-
-//         // 写入PNG文件
-//         std::cout << "正在写入PNG文件: " << argv[2] << std::endl;
-//         write_png(img, argv[2]);
-//         std::cout << "转换完成！" << std::endl;
-//     } catch (const std::exception& e) {
-//         std::cerr << "错误: " << e.what() << std::endl;
-//         return 1;
-//     }
-
-//     return 0;
-// }

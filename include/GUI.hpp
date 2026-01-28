@@ -11,10 +11,12 @@
 // 全局状态结构体（需暴露给main.cpp）
 struct AppState {
     std::string selected_file;    // 选中的场景文件路径
-    void* render_buffer;          // 渲染结果缓冲区（RGB格式）
     int buffer_width;             // 缓冲区宽度
     int buffer_height;            // 缓冲区高度
+    void* render_buffer = nullptr; // 渲染像素缓冲区（RGB格式）
     bool is_rendered = false;     // 是否完成渲染
+    Fl_Box* render_display_box = nullptr; // 渲染结果显示框（新增）
+    Fl_Box* status_box = nullptr;
 };
 
 // 全局状态（extern供main.cpp访问）
@@ -28,5 +30,10 @@ void cleanup_resources(Fl_Window* win);
 
 // 保存PNG回调（供main.cpp绑定）
 void save_png_cb(Fl_Widget*, void*);
+void select_file_cb(Fl_Widget*, void*);
+void render_cb(Fl_Widget*, void*);
+
+// 状态栏接口
+void set_status(const std::string& msg, Fl_Color color = FL_BLACK);
 
 #endif // GUI_HPP
