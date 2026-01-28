@@ -409,6 +409,7 @@ void gui_render_logic(const std::string& xml_path) {
         // ③ 缩放图像并显示
         Fl_Image* scaled_img = rgb_img->copy(draw_w, draw_h);
         delete rgb_img; // 释放原图像（避免内存泄漏）
+        display_box->label(""); // 隐藏 "Preview Ready" 文字
         display_box->image(scaled_img); // 设置到显示框
         display_box->redraw(); // 强制重绘（立即显示）
     }
@@ -450,7 +451,7 @@ void custom_select_file_cb(Fl_Widget*, void*) {
 
 int main() {
     // ========== GUI初始化 ==========
-    Fl_Window* main_win = init_gui(400, 300); // 创建400x300的GUI窗口
+    Fl_Window* main_win = init_gui(1000, 600); // 创建400x300的GUI窗口
     // 替换GUI默认的回调函数（使用自定义逻辑）
     // 1. 获取GUI按钮并重新绑定回调
     Fl_Button* select_btn = (Fl_Button*)main_win->child(2); // 第一个子控件：选择文件按钮

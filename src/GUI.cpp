@@ -142,51 +142,70 @@ void save_png_cb(Fl_Widget*, void*) {
 /**
  * @brief 初始化GUI界面
  */
-Fl_Window* init_gui(int width = 800, int height = 600) { // 增大窗口尺寸
-    // 创建主窗口
-    Fl_Window* win = new Fl_Window(width, height, "Rander GUI");
+/**
+ * @brief 现代美化版初始化GUI界面
+ */
+Fl_Window* init_gui(int width = 900, int height = 700) { 
+    // 1. 设置全局配色方案
+    Fl::background(33, 33, 33);      // 主背景：深黑灰
+    Fl::background2(45, 45, 45);     // 输入框/列表背景
+    Fl::foreground(240, 240, 240);   // 默认文字颜色：近白色
+    
+    Fl_Window* win = new Fl_Window(width, height, "Ray Tracing Renderer Pro");
+    win->color(fl_rgb_color(33, 33, 33)); // 确保窗口颜色应用
     win->begin();
 
-    // ===== 1. 渲染结果显示区域（占窗口上半部分）=====
-    Fl_Box* display_box = new Fl_Box(10, 10, width - 20, height - 100);
-    display_box->box(FL_DOWN_BOX); // 带边框的显示框，更易识别
-    display_box->label("Display area");
-    display_box->align(FL_ALIGN_CENTER); // 文字居中
-    display_box->color(FL_GRAY); // 背景色（未渲染时灰色）
-    app_state.render_display_box = display_box; // 关联到全局状态
+    // ===== 1. 渲染结果显示区域 (加深背景并居中) =====
+    int margin = 20;
+    Fl_Box* display_box = new Fl_Box(margin, margin, width - 2 * margin, height - 160);
+    display_box->box(FL_FLAT_BOX); 
+    display_box->color(fl_rgb_color(20, 20, 20)); // 纯黑背景预览
+    display_box->label("Preview Ready");
+    display_box->labelsize(20);
+    display_box->labelcolor(fl_rgb_color(100, 100, 100));
+    app_state.render_display_box = display_box;
 
-    // ===== 状态栏 =====
-    Fl_Box* status_box =
-        new Fl_Box(10, height - 130, width - 20, 30, "就绪");
-    status_box->box(FL_DOWN_BOX);
+    // ===== 2. 状态栏 (半透明感配色) =====
+    Fl_Box* status_box = new Fl_Box(margin, height - 130, width - 2 * margin, 30, " Ready to go");
+    status_box->box(FL_THIN_DOWN_BOX);
+    status_box->color(fl_rgb_color(45, 45, 45));
     status_box->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-    status_box->labelsize(14);
-    status_box->color(FL_WHITE);
-
+    status_box->labelsize(13);
+    status_box->labelcolor(FL_CYAN); // 初始状态为青色
     app_state.status_box = status_box;
 
-    // ===== 2. 按钮布局优化（底部横向均分）=====
-    int btn_total_width = width - 40; // 总宽度（留左右边距）
-    int btn_width = btn_total_width / 3; // 三个按钮均分
-    int btn_y = height - 80; // 按钮Y坐标（底部）
-    Fl_Button* select_btn = new Fl_Button(20, btn_y, btn_width, 40, "Choose file");
-    Fl_Button* render_btn = new Fl_Button(20 + btn_width + 10, btn_y, btn_width, 40, "Execute");
-    Fl_Button* save_btn = new Fl_Button(20 + 2*(btn_width + 10), btn_y, btn_width, 40, "Save PNG");
+    // ===== 3. 按钮布局 (扁平化 & 颜色区分) =====
+    int btn_h = 45;
+    int btn_y = height - 70;
+    int spacing = 15;
+    int btn_w = (width - 2 * margin - 2 * spacing) / 3;
+
+    // 选择文件按钮
+    Fl_Button* select_btn = new Fl_Button(margin, btn_y, btn_w, btn_h, "@fileopen  Choose Scene");
+    select_btn->box(FL_GTK_UP_BOX); // 稍微现代一点的边框
+    select_btn->color(fl_rgb_color(60, 60, 60));
+    select_btn->down_color(fl_rgb_color(80, 80, 80));
+
+    // 执行按钮 (亮蓝色)
+    Fl_Button* render_btn = new Fl_Button(margin + btn_w + spacing, btn_y, btn_w, btn_h, "@refresh  Render Scene");
+    render_btn->box(FL_GTK_UP_BOX);
+    render_btn->color(fl_rgb_color(0, 90, 160));
+    render_btn->labelcolor(FL_WHITE);
+    render_btn->labelfont(FL_HELVETICA_BOLD);
+
+    // 保存按钮 (翠绿色)
+    Fl_Button* save_btn = new Fl_Button(margin + 2 * (btn_w + spacing), btn_y, btn_w, btn_h, "@filesave  Save Image");
+    save_btn->box(FL_GTK_UP_BOX);
+    save_btn->color(fl_rgb_color(40, 110, 40));
+    save_btn->labelcolor(FL_WHITE);
 
     // 绑定回调
     select_btn->callback(select_file_cb);
     render_btn->callback(render_cb);
     save_btn->callback(save_png_cb);
 
-    // 样式优化
-    select_btn->labelsize(14);
-    render_btn->labelsize(14);
-    save_btn->labelsize(14);
-    // render_btn->color(FL_LIGHT_BLUE); // 渲染按钮高亮
-    // save_btn->color(FL_LIGHT_GREEN);  // 保存按钮高亮
-
     win->end();
-    win->resizable(display_box); // 窗口缩放时，显示区域自适应
+    win->resizable(display_box); 
     return win;
 }
 
