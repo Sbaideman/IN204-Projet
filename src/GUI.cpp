@@ -157,21 +157,27 @@ Fl_Window* init_gui(int width = 900, int height = 700) {
 
     // ===== 1. 渲染结果显示区域 (加深背景并居中) =====
     int margin = 20;
-    Fl_Box* display_box = new Fl_Box(margin, margin, width - 2 * margin, height - 160);
+    int sidebar_w = 200; // 左边栏宽度
+
+    // ===== 新增：左侧场景列表 =====
+    Fl_Hold_Browser* browser = new Fl_Hold_Browser(margin, margin, sidebar_w, height - 160, "Scenes");
+    browser->color(fl_rgb_color(45, 45, 45));
+    browser->textcolor(FL_WHITE);
+    browser->has_scrollbar(Fl_Browser_::VERTICAL);
+    browser->align(FL_ALIGN_TOP_LEFT);
+    app_state.file_browser = browser;
+
+    // ===== 修改：渲染结果显示区域 (坐标 X 增加 sidebar_w + spacing) =====
+    int canvas_x = margin + sidebar_w + margin;
+    int canvas_w = width - canvas_x - margin;
+    Fl_Box* display_box = new Fl_Box(canvas_x, margin, canvas_w, height - 160);
     display_box->box(FL_FLAT_BOX); 
-    display_box->color(fl_rgb_color(20, 20, 20)); // 纯黑背景预览
-    display_box->label("Preview Ready");
-    display_box->labelsize(20);
-    display_box->labelcolor(fl_rgb_color(100, 100, 100));
+    display_box->color(fl_rgb_color(20, 20, 20));
     app_state.render_display_box = display_box;
 
-    // ===== 2. 状态栏 (半透明感配色) =====
-    Fl_Box* status_box = new Fl_Box(margin, height - 130, width - 2 * margin, 30, " Ready to go");
+    // ===== 修改：状态栏 (拉长以覆盖底部) =====
+    Fl_Box* status_box = new Fl_Box(margin, height - 130, width - 2 * margin, 30, " Ready");
     status_box->box(FL_THIN_DOWN_BOX);
-    status_box->color(fl_rgb_color(45, 45, 45));
-    status_box->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-    status_box->labelsize(13);
-    status_box->labelcolor(FL_CYAN); // 初始状态为青色
     app_state.status_box = status_box;
 
     // ===== 3. 按钮布局 (扁平化 & 颜色区分) =====
@@ -181,13 +187,13 @@ Fl_Window* init_gui(int width = 900, int height = 700) {
     int btn_w = (width - 2 * margin - 2 * spacing) / 3;
 
     // 选择文件按钮
-    Fl_Button* select_btn = new Fl_Button(margin, btn_y, btn_w, btn_h, "@fileopen  Choose Scene");
+    Fl_Button* select_btn = new Fl_Button(margin, btn_y, btn_w, btn_h, "@refresh  Refresh");
     select_btn->box(FL_GTK_UP_BOX); // 稍微现代一点的边框
     select_btn->color(fl_rgb_color(60, 60, 60));
     select_btn->down_color(fl_rgb_color(80, 80, 80));
 
     // 执行按钮 (亮蓝色)
-    Fl_Button* render_btn = new Fl_Button(margin + btn_w + spacing, btn_y, btn_w, btn_h, "@refresh  Render Scene");
+    Fl_Button* render_btn = new Fl_Button(margin + btn_w + spacing, btn_y, btn_w, btn_h, "@render  Render Scene");
     render_btn->box(FL_GTK_UP_BOX);
     render_btn->color(fl_rgb_color(0, 90, 160));
     render_btn->labelcolor(FL_WHITE);

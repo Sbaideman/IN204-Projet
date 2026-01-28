@@ -4,6 +4,7 @@
 #include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Button.H>
+#include <FL/Fl_Hold_Browser.H>
 #include <FL/Fl_Native_File_Chooser.H>
 #include <FL/fl_ask.H>
 #include <string>
@@ -17,6 +18,7 @@ struct AppState {
     bool is_rendered = false;     // 是否完成渲染
     Fl_Box* render_display_box = nullptr; // 渲染结果显示框（新增）
     Fl_Box* status_box = nullptr;
+    Fl_Hold_Browser* file_browser = nullptr; // 新增：左侧文件列表框
 };
 
 // 全局状态（extern供main.cpp访问）

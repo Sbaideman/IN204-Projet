@@ -467,16 +467,65 @@ void custom_select_file_cb(Fl_Widget*, void*) {
     }
 }
 
+/**
+ * @brief 扫描指定目录下的所有XML文件并填充到列表
+ */
+void refresh_scene_list(const std::string& path) {
+    if (!app_state.file_browser) return;
+    app_state.file_browser->clear();
+    
+    DIR* dir;
+    struct dirent* ent;
+    if ((dir = opendir(path.c_str())) != NULL) {
+        while ((ent = readdir(dir)) != NULL) {
+            std::string fname = ent->d_name;
+            if (fname.find(".xml") != std::string::npos) {
+                app_state.file_browser->add(fname.c_str());
+            }
+        }
+        closedir(dir);
+    }
+}
+
+void refresh_btn_wrapper(Fl_Widget*, void*) {
+    refresh_scene_list("../scene"); // 调用你之前写的扫描函数
+}
+
+/**
+ * @brief 点击列表项的回调：更新 selected_file
+ */
+void browser_cb(Fl_Widget* w, void*) {
+    Fl_Hold_Browser* b = (Fl_Hold_Browser*)w;
+    int v = b->value();
+    if (v > 0) {
+        std::string filename = b->text(v);
+        app_state.selected_file = "../scene/" + filename; // 假设场景在../scene目录
+        set_status("Selected: " + filename, FL_YELLOW);
+    }
+}
+
 int main() {
     // ========== GUI初始化 ==========
-    Fl_Window* main_win = init_gui(1000, 600); // 创建400x300的GUI窗口
+    // 1. 初始化GUI (加大初始宽度以容纳左边栏)
+    Fl_Window* main_win = init_gui(1100, 750);
+    
+    // 2. 绑定列表回调
+    app_state.file_browser->callback(browser_cb);
+    
+    // 3. 初始加载文件列表
+    refresh_scene_list("../scene");
+
+    // 4. 重新绑定按钮逻辑
+    // 将第一个按钮改为刷新列表功能
+    Fl_Button* refresh_btn = (Fl_Button*)main_win->child(3); 
+    refresh_btn->callback(refresh_btn_wrapper);
     // 替换GUI默认的回调函数（使用自定义逻辑）
     // 1. 获取GUI按钮并重新绑定回调
-    Fl_Button* select_btn = (Fl_Button*)main_win->child(2); // 第一个子控件：选择文件按钮
-    Fl_Button* render_btn = (Fl_Button*)main_win->child(3); // 第二个子控件：渲染按钮
-    Fl_Button* save_btn = (Fl_Button*)main_win->child(4);   // 第三个子控件：保存PNG按钮
+    // Fl_Button* select_btn = (Fl_Button*)main_win->child(2); // 第一个子控件：选择文件按钮
+    Fl_Button* render_btn = (Fl_Button*)main_win->child(4); // 第二个子控件：渲染按钮
+    Fl_Button* save_btn = (Fl_Button*)main_win->child(5);   // 第三个子控件：保存PNG按钮
     
-    select_btn->callback(custom_select_file_cb); // 自定义文件选择（仅选XML）
+    // select_btn->callback(custom_select_file_cb); // 自定义文件选择（仅选XML）
     render_btn->callback(custom_render_cb);      // 自定义渲染逻辑（真实渲染）
     // 保存PNG回调复用GUI.cpp的save_png_cb（无需修改）
 
