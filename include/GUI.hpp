@@ -5,6 +5,7 @@
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Hold_Browser.H>
+#include <FL/Fl_Progress.H>
 #include <FL/Fl_Native_File_Chooser.H>
 #include <FL/fl_ask.H>
 #include <string>
@@ -19,6 +20,7 @@ struct AppState {
     Fl_Box* render_display_box = nullptr; // 渲染结果显示框（新增）
     Fl_Box* status_box = nullptr;
     Fl_Hold_Browser* file_browser = nullptr; // 新增：左侧文件列表框
+    Fl_Progress* progress_bar = nullptr; // 新增：渲染进度条
 };
 
 // 全局状态（extern供main.cpp访问）

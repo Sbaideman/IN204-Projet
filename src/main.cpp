@@ -276,6 +276,21 @@ void render_omp(const Scene& render_scene,
                 std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
                           << "/" << image_height << ' ' << std::flush;
             }
+            if (app_state.progress_bar) {
+                // 获取当前进度
+                float progress_val = (float)completed_lines.load() / image_height * 100.0f;
+                
+                // 【修复核心】：使用 if 替代 #pragma omp master
+                // omp_get_thread_num() == 0 确保只有主线程执行 UI 更新
+                if (omp_get_thread_num() == 0) {
+                    app_state.progress_bar->value(progress_val);
+                    
+                    // 为了性能考虑，不需要每一行都 check，可以每 10 行 check 一次
+                    if (j % 10 == 0) {
+                        Fl::check(); 
+                    }
+                }
+            }
         }
 
         // 并行结束后主线程输出最终进度
@@ -434,9 +449,23 @@ void custom_render_cb(Fl_Widget*, void*) {
 
     // 1. 设置渲染中状态
     set_status("Rendering scene, please wait...", FL_BLUE);
+
+    // 1. 重置进度条
+    if (app_state.progress_bar) {
+        app_state.progress_bar->value(0);
+        app_state.progress_bar->label("Rendering...");
+    }
     
-    // 2. 执行渲染并获取时长
+    set_status("Rendering scene, please wait...", FL_BLUE);
+    
+    // 2. 执行渲染 (内部会触发 progress_bar->value 的更新)
     double elapsed_seconds = gui_render_logic(app_state.selected_file);
+
+    // 3. 渲染完成后的处理
+    if (app_state.progress_bar) {
+        app_state.progress_bar->value(100);
+        app_state.progress_bar->label("Done");
+    }
 
     // 3. 格式化耗时信息
     std::stringstream ss;
@@ -517,13 +546,13 @@ int main() {
 
     // 4. 重新绑定按钮逻辑
     // 将第一个按钮改为刷新列表功能
-    Fl_Button* refresh_btn = (Fl_Button*)main_win->child(3); 
+    Fl_Button* refresh_btn = (Fl_Button*)main_win->child(4); 
     refresh_btn->callback(refresh_btn_wrapper);
     // 替换GUI默认的回调函数（使用自定义逻辑）
     // 1. 获取GUI按钮并重新绑定回调
     // Fl_Button* select_btn = (Fl_Button*)main_win->child(2); // 第一个子控件：选择文件按钮
-    Fl_Button* render_btn = (Fl_Button*)main_win->child(4); // 第二个子控件：渲染按钮
-    Fl_Button* save_btn = (Fl_Button*)main_win->child(5);   // 第三个子控件：保存PNG按钮
+    Fl_Button* render_btn = (Fl_Button*)main_win->child(5); // 第二个子控件：渲染按钮
+    Fl_Button* save_btn = (Fl_Button*)main_win->child(6);   // 第三个子控件：保存PNG按钮
     
     // select_btn->callback(custom_select_file_cb); // 自定义文件选择（仅选XML）
     render_btn->callback(custom_render_cb);      // 自定义渲染逻辑（真实渲染）

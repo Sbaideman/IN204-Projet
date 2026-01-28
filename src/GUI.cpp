@@ -160,7 +160,7 @@ Fl_Window* init_gui(int width = 900, int height = 700) {
     int sidebar_w = 200; // 左边栏宽度
 
     // ===== 新增：左侧场景列表 =====
-    Fl_Hold_Browser* browser = new Fl_Hold_Browser(margin, margin, sidebar_w, height - 160, "Scenes");
+    Fl_Hold_Browser* browser = new Fl_Hold_Browser(margin, margin, sidebar_w, height - 180, "Scenes");
     browser->color(fl_rgb_color(45, 45, 45));
     browser->textcolor(FL_WHITE);
     browser->has_scrollbar(Fl_Browser_::VERTICAL);
@@ -170,13 +170,24 @@ Fl_Window* init_gui(int width = 900, int height = 700) {
     // ===== 修改：渲染结果显示区域 (坐标 X 增加 sidebar_w + spacing) =====
     int canvas_x = margin + sidebar_w + margin;
     int canvas_w = width - canvas_x - margin;
-    Fl_Box* display_box = new Fl_Box(canvas_x, margin, canvas_w, height - 160);
+    Fl_Box* display_box = new Fl_Box(canvas_x, margin, canvas_w, height - 170);
     display_box->box(FL_FLAT_BOX); 
     display_box->color(fl_rgb_color(20, 20, 20));
     app_state.render_display_box = display_box;
 
-    // ===== 修改：状态栏 (拉长以覆盖底部) =====
-    Fl_Box* status_box = new Fl_Box(margin, height - 130, width - 2 * margin, 30, " Ready");
+    // ===== 新增：渲染进度条 (位于显示框下方) =====
+    int progress_y = height - 155; // 位于状态栏上方一点
+    Fl_Progress* progress = new Fl_Progress(margin, progress_y, width - 2 * margin, 20);
+    progress->minimum(0);
+    progress->maximum(100);
+    progress->color(fl_rgb_color(45, 45, 45));    // 背景色
+    progress->selection_color(FL_CYAN);           // 进度条颜色
+    progress->labelcolor(FL_WHITE);
+    app_state.progress_bar = progress;
+
+    // ===== 修改：状态栏位置 (向下微调避免重叠) =====
+    int status_y = height - 125;
+    Fl_Box* status_box = new Fl_Box(margin, status_y, width - 2 * margin, 30, " Ready");
     status_box->box(FL_THIN_DOWN_BOX);
     app_state.status_box = status_box;
 
