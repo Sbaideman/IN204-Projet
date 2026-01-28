@@ -78,26 +78,24 @@ public:
         : point(p), normal(unit_vector(n)), mat_ptr(m) {}
 
     virtual bool hit(const Ray& r, double t_min, double t_max, HitRecord& rec) const override {
-        // 计算分母：光线方向与平面法线的点积
+        // Denominator: Dot product of ray direction and plane normal
         auto denom = dot(r.direction(), normal);
 
-        // 如果分母接近 0，说明光线与平面平行，没有交点
+        // Denominator close to 0 => Ray is parallel to the plane
         if (std::abs(denom) < 1e-6) return false;
 
-        // 计算 t
-        // 公式推导：(Origin + t*Dir - Point) . Normal = 0
+        // Calculate t
+        // (Origin + t*Dir - Point) . Normal = 0
         // t = (Point - Origin) . Normal / (Dir . Normal)
         auto t = dot(point - r.origin(), normal) / denom;
 
-        // 检查 t 是否在有效范围内
         if (t < t_min || t > t_max) return false;
 
-        // 记录信息
+        // Record information
         rec.t = t;
         rec.p = r.at(t);
         
-        // 平面是双面的，我们需要确定光线是打在正面还是反面
-        // set_face_normal 会自动处理这个问题
+        // Determine whether the light hits the front or the back of the plane.
         rec.set_face_normal(r, normal);
         rec.mat_ptr = mat_ptr;
 
@@ -131,43 +129,40 @@ public:
     Parallelogram(const Point3& _Q, const Vec3& _u, const Vec3& _v, shared_ptr<Material> m)
         : Q(_Q), u(_u), v(_v), mat_ptr(m)
     {
-        // 1. 计算法线 n = u x v
+        // 1. Calculate the normal: n = u x v
         auto n = cross(u, v);
         normal = unit_vector(n);
         
-        // 2. 平面方程参数 Ax + By + Cz = D
+        // 2. Plane equation parameters Ax + By + Cz = D
         D = dot(normal, Q);
         
-        // 3. 预计算常数向量 w，用于后续求 alpha 和 beta
-        // 这是一个数学技巧，用于快速解平面坐标
+        // 3. Pre-calculate the constant vector w, which will be used to calculate alpha and beta later.
         w = n / dot(n, n);
     }
 
     virtual bool hit(const Ray& r, double t_min, double t_max, HitRecord& rec) const override {
         auto denom = dot(normal, r.direction());
 
-        // 1. 检查光线是否平行于平面
+        // 1. Check if the light rays are parallel to the plane.
         if (std::abs(denom) < 1e-8) return false;
 
-        // 2. 计算交点 t
+        // 2. Calculate the intersection time t
         auto t = (D - dot(normal, r.origin())) / denom;
         if (t < t_min || t > t_max) return false;
 
-        // 3. 计算交点 p
+        // 3. Calculate the intersection point p
         auto intersection = r.at(t);
         
-        // 4. 判断点是否在四边形内部 (核心逻辑)
-        // 我们需要找到 alpha 和 beta，使得 p = Q + alpha*u + beta*v
+        // 4. Determine if a point is inside a quadrilateral
+        // Find alpha and beta such that p = Q + alpha*u + beta*v
         Vec3 planar_hitpt_vector = intersection - Q;
-        
-        // 利用预计算的 w 快速求解
         auto alpha = dot(w, cross(planar_hitpt_vector, v));
         auto beta = dot(w, cross(u, planar_hitpt_vector));
 
-        // 检查范围
+        // Check the range of alpha and beta
         if (alpha < 0 || alpha > 1 || beta < 0 || beta > 1) return false;
 
-        // 5. 命中！记录数据
+        // 5. Hit! Record data
         rec.t = t;
         rec.p = intersection;
         rec.mat_ptr = mat_ptr;

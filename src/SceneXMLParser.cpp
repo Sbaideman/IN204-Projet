@@ -2,7 +2,7 @@
 #include "SceneXMLParser.hpp"
 
 // 移除XML注释（<!-- ... -->）
-std::string SceneXMLParser::removeComments(const std::string& xml) { // 折中方案
+std::string SceneXMLParser::removeComments(const std::string& xml) {
     std::string cleanXml = xml;
     size_t commentStart = cleanXml.find("<!--");
     

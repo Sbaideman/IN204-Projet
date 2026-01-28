@@ -57,26 +57,16 @@ public:
  */
 class Parallelepiped : public Scene {
 public:
-    // 构造函数
-    // origin: 起点
-    // u, v, w: 从起点发出的三条边向量
+    // Constructor
+    // origin: The origin
+    // u, v, w: Three edge vectors emanating from the origin
     Parallelepiped(const Point3& origin, const Vec3& u, const Vec3& v, const Vec3& w, shared_ptr<Material> m) {
-        // 我们利用 Scene 类的 add 方法，把 6 个面加进去
-        // 这样 Parallelepiped 本身就是一个包含 6 个 Parallelogram 的容器
-        
-        // 面 1 (前)
+        // We use the add method of the Scene class to add the 6 faces, forming a hexahedron.        
         add(make_shared<Parallelogram>(origin, u, v, m));
-        // 面 2 (后) - 起点在 origin + w
         add(make_shared<Parallelogram>(origin + w, u, v, m));
-        
-        // 面 3 (顶) - 起点在 origin + v
         add(make_shared<Parallelogram>(origin + v, u, w, m));
-        // 面 4 (底)
         add(make_shared<Parallelogram>(origin, u, w, m));
-        
-        // 面 5 (右) - 起点在 origin + u
         add(make_shared<Parallelogram>(origin + u, v, w, m));
-        // 面 6 (左)
         add(make_shared<Parallelogram>(origin, v, w, m));
     }
 };
