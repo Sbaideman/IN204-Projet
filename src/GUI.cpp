@@ -44,8 +44,6 @@ void render_cb(Fl_Widget*, void*) {
     set_status("Rendering...", FL_BLUE);
 
     // ========== 替换为你的实际渲染逻辑 ==========
-    // fl_message("开始渲染：%s", app_state.selected_file.c_str());
-    
     // 示例：模拟渲染缓冲区（你需替换为真实渲染数据）
     app_state.buffer_width = 800;
     app_state.buffer_height = 600;
@@ -204,7 +202,7 @@ Fl_Window* init_gui(int width = 900, int height = 700) {
     select_btn->down_color(fl_rgb_color(80, 80, 80));
 
     // 执行按钮 (亮蓝色)
-    Fl_Button* render_btn = new Fl_Button(margin + btn_w + spacing, btn_y, btn_w, btn_h, "@render  Render Scene");
+    Fl_Button* render_btn = new Fl_Button(margin + btn_w + spacing, btn_y, btn_w, btn_h, "@>  Render Scene");
     render_btn->box(FL_GTK_UP_BOX);
     render_btn->color(fl_rgb_color(0, 90, 160));
     render_btn->labelcolor(FL_WHITE);
