@@ -11,6 +11,8 @@
 #include "SceneXMLParser.hpp"
 #include "GUI.hpp"
 #include <omp.h>
+#include <sstream>  // 用于构建带时间的字符串
+#include <iomanip>  // 用于格式化浮点数精度
 
 /**
  * @brief 计算一条特定光线最终看到的颜色
@@ -288,7 +290,7 @@ void render_omp(const Scene& render_scene,
  * 2. 新增：适配GUI的渲染函数（替换GUI.cpp中模拟的render_cb逻辑）
  * 从GUI选择的XML文件读取场景，执行渲染，并将结果写入GUI的渲染缓冲区
  */
-void gui_render_logic(const std::string& xml_path) {
+double gui_render_logic(const std::string& xml_path) {
     // 1. 解析XML场景文件（复用原有逻辑）
     SceneXMLParser parser;
     SceneData parsed_data;
@@ -297,7 +299,7 @@ void gui_render_logic(const std::string& xml_path) {
         std::cerr << "解析场景成功：" << xml_path << "，共 " << parsed_data.objects.size() << " 个物体\n";
     } catch (const std::exception& e) {
         fl_alert("场景解析失败：%s", e.what());
-        return;
+        return 0;
     }
 
     // 2. 构建渲染场景
@@ -355,7 +357,7 @@ void gui_render_logic(const std::string& xml_path) {
     // 6. 计算渲染耗时
     auto render_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> render_duration = render_end - render_start;
-    std::cerr << "渲染完成，耗时：" << render_duration.count() << " 秒\n";
+    double seconds = render_duration.count();
 
     // 7. 将渲染结果写入GUI的全局缓冲区（替换GUI的模拟数据）
     app_state.buffer_width = image_width;
@@ -366,7 +368,7 @@ void gui_render_logic(const std::string& xml_path) {
     app_state.render_buffer = malloc(image_width * image_height * 3);
     if (!app_state.render_buffer) {
         fl_alert("GUI渲染缓冲区分配失败！");
-        return;
+        return 0;
     }
 
     // 8. 拷贝像素数据到GUI缓冲区
@@ -415,8 +417,10 @@ void gui_render_logic(const std::string& xml_path) {
     }
 
     app_state.is_rendered = true;
-    set_status("Render completed!", FL_DARK_GREEN);
-    app_state.render_display_box->redraw();
+
+    return seconds;
+    // set_status("Render completed!", FL_DARK_GREEN);
+    // app_state.render_display_box->redraw();
 }
 
 /**
@@ -427,8 +431,22 @@ void custom_render_cb(Fl_Widget*, void*) {
         fl_alert("请先选择待渲染的XML场景文件！");
         return;
     }
-    // 执行真实渲染逻辑
-    gui_render_logic(app_state.selected_file);
+
+    // 1. 设置渲染中状态
+    set_status("Rendering scene, please wait...", FL_BLUE);
+    
+    // 2. 执行渲染并获取时长
+    double elapsed_seconds = gui_render_logic(app_state.selected_file);
+
+    // 3. 格式化耗时信息
+    std::stringstream ss;
+    ss << "Render completed in " << std::fixed << std::setprecision(3) << elapsed_seconds << "s";
+    
+    // 4. 更新状态栏
+    set_status(ss.str(), FL_DARK_GREEN);
+    
+    // 5. 强制刷新窗口以显示最终状态
+    app_state.render_display_box->window()->redraw();
 }
 
 /**
