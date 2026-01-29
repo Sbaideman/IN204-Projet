@@ -247,8 +247,7 @@ void render_omp(const Scene& render_scene,
             std::cerr << "\rScanlines completed: 0/" << image_height << ' ' << std::flush;
         }
 
-        // 核心修复：schedule(dynamic, 32) 附加在 for 指令上
-        #pragma omp for schedule(dynamic, 32)
+        #pragma omp for collapse(1) schedule(dynamic, 64)
         for (int j = 0; j < image_height; ++j) {
             int original_j = image_height - 1 - j;
             for (int i = 0; i < image_width; ++i) {
@@ -270,25 +269,22 @@ void render_omp(const Scene& render_scene,
                 pixel_buffer[idx] = {ir, ig, ib};
             }
             // 原子更新进度
-            completed_lines.fetch_add(1, std::memory_order_relaxed);
-            // 仅主线程输出进度（替代 master 指令）
-            if (omp_get_thread_num() == 0) {
-                std::cerr << "\rScanlines completed: " << completed_lines.load(std::memory_order_relaxed) 
-                          << "/" << image_height << ' ' << std::flush;
-            }
-            if (app_state.progress_bar) {
-                // 获取当前进度
-                float progress_val = (float)completed_lines.load() / image_height * 100.0f;
-                
-                // 【修复核心】：使用 if 替代 #pragma omp master
-                // omp_get_thread_num() == 0 确保只有主线程执行 UI 更新
+            int current_finished = completed_lines.fetch_add(1, std::memory_order_relaxed);
+            // 建议：每完成约 2% 的进度更新一次 UI，而不是限制死某个线程
+            if (current_finished % 10 == 0 || current_finished == image_height) {
+                // 虽然任何线程都可以进这里，但 Fl::check() 最好在主线程或通过 Fl::awake()
+                // 在简单的 FLTK 结构中，omp master 或 0号线程 check 是安全的：
                 if (omp_get_thread_num() == 0) {
-                    app_state.progress_bar->value(progress_val);
-                    
-                    // 为了性能考虑，不需要每一行都 check，可以每 10 行 check 一次
-                    if (j % 10 == 0) {
-                        Fl::check(); 
+                    if (app_state.progress_bar) {
+                        float progress_val = (float)current_finished / image_height * 100.0f;
+                        app_state.progress_bar->value(progress_val);
                     }
+                    // 只有 0 号线程负责让 UI 刷一下，处理点击事件
+                    Fl::check(); 
+                    
+                    // 终端输出
+                    std::cerr << "\rScanlines completed: " << current_finished 
+                              << "/" << image_height << ' ' << std::flush;
                 }
             }
         }
@@ -340,23 +336,6 @@ double gui_render_logic(const std::string& xml_path) {
 
     // 5. 多线程渲染（复用原有逻辑）
     auto render_start = std::chrono::high_resolution_clock::now();
-    
-    // int num_threads = std::thread::hardware_concurrency() ?: 4;
-    // std::vector<std::thread> threads;
-    // for (int t = 0; t < num_threads; ++t) {
-    //     threads.emplace_back(
-    //         render_blocks_round_robin,
-    //         t, num_threads, block_size,
-    //         std::ref(render_scene),
-    //         std::ref(origin), std::ref(horizontal), std::ref(vertical),
-    //         std::ref(lower_left_corner),
-    //         image_width, image_height,
-    //         samples_per_pixel, max_depth,
-    //         std::ref(pixel_buffer),
-    //         std::ref(completed_lines)
-    //     );
-    // }
-    // for (auto& t : threads) t.join();
 
     // 设置OMP线程数（可选，默认是硬件核心数）
     omp_set_num_threads(std::thread::hardware_concurrency() ?: 4);

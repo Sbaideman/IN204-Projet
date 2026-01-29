@@ -3,6 +3,8 @@
 #include <limits>
 #include <memory>
 #include <cstdlib>
+#include <random>
+#include <omp.h>
 #include "Vec3.hpp"
 #include "Ray.hpp"
 
@@ -22,13 +24,15 @@ inline double degrees_to_radians(double degrees) {
 }
 
 // Returns a random real in [0,1).
-inline double random_double() {
-    return rand() / (RAND_MAX + 1.0);
+inline double _random_double() {
+    // thread_local 确保每个线程只初始化一次这个生成器
+    static thread_local std::mt19937 generator(std::random_device{}() + omp_get_thread_num());
+    static std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    return distribution(generator);
 }
 
-// Returns a random real in [min,max).
-inline double random_double(double min, double max) {
-    return min + (max-min)*random_double();
+inline double random_double(double min=0, double max=1) {
+    return min + (max - min) * _random_double();
 }
 
 // Limit the value x within [min, max]
