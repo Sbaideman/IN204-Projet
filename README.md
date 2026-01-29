@@ -11,7 +11,6 @@ The system is built upon a modular **Object-Oriented Programming (OOP)** archite
 *   `src/`: Contains source code files (`.cpp`).
     *   `main.cpp`: Entry point and workflow control.
     *   `GUI.cpp`: Implementation of the graphical user interface using FLTK.
-    *   `RenderUtils.cpp`: Core rendering logic and scene conversion factory.
     *   `SceneXMLParser.cpp`: Implementation of XML parsing logic.
     *   `SavePng.cpp`: Implementation of PNG image encoding and saving logic.
 *   `include/`: Contains header files (`.hpp`).
@@ -21,7 +20,7 @@ The system is built upon a modular **Object-Oriented Programming (OOP)** archite
     *   `Scene.hpp`: Scene container responsible for managing object lists.
     *   `Vec3.hpp`: Vector mathematics library.
     *   `SavePng.hpp`: Interface for image saving utilities.
-    *   `RenderUtils.hpp` & `SceneXMLParser.hpp`: Auxiliary interface definitions.
+    *   `SceneXMLParser.hpp`: Auxiliary interface definitions.
 *   `scene/`: Contains XML scene configuration files (e.g., `scene_layout.xml`, `balcony.xml`, `beach.xml`, `laboratory.xml`).
 
 ### 1.3 Implemented Features
@@ -69,7 +68,7 @@ This project is built using **CMake** and requires **FLTK** (for GUI) and **libp
 
 ### 1. Windows
 
-**1. Build:**
+**Build:**
 Run the following commands from the project root directory:
 ```bash
 mkdir build 
@@ -78,7 +77,7 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE=[path_to_vcpkg]/scripts/buildsystems/vcpkg.cmake
 cmake --build . --config Release
 ```
 
-**2. Run:** \
+**Run:** \
 Ensure the *scene/* directory exists relative to the executable. Run the application to launch the GUI:
 ```bash
 ./Release/main
@@ -86,13 +85,13 @@ Ensure the *scene/* directory exists relative to the executable. Run the applica
 
 ### 2. MacOS
 
-**1. Pre-requisite: Install Dependencies**
+**Pre-requisite: Install Dependencies**
 Use Homebrew to install required build tools and libraries (install Homebrew first if not present):
 ```zsh
 brew install cmake fltk libpng
 ```
 
-**2. Build:**
+**Build:**
 Run the following commands from the project root directory:
 ```zsh
 mkdir build 
@@ -101,7 +100,7 @@ cmake ..
 make
 ```
 
-**3. Run:** \
+**Run:** \
 Ensure the *scene/* directory exists relative to the executable. Run the application to launch the GUI:
 ```zsh
 ./main
@@ -109,7 +108,7 @@ Ensure the *scene/* directory exists relative to the executable. Run the applica
 
 ### 3. Linux
 
-**1. Build:**
+**Build:**
 Run the following commands from the project root directory:
 ```zsh
 mkdir build 
@@ -118,7 +117,7 @@ cmake ..
 make
 ```
 
-**3. Run:** \
+**Run:** \
 Ensure the *scene/* directory exists relative to the executable. Run the application to launch the GUI:
 ```zsh
 ./main
@@ -127,8 +126,9 @@ Ensure the *scene/* directory exists relative to the executable. Run the applica
 ## 3. Usage
 
 The application window will open, displaying a list of available scenes found in the scene/ directory.
-Select a scene from the list (e.g., balcony.xml) and click Render.
-The rendering progress will be displayed in real-time.
+
+Select a scene from the list (e.g., balcony.xml) and click Render. The rendering progress will be displayed in real-time.
+
 Upon completion, click the Save Image button to save the result as a PNG image.
 
 ![GUI effect diagram](assets/images/GUI_v3.png)
